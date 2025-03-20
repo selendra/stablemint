@@ -1,63 +1,42 @@
-import { ethers } from "hardhat";
-import { expect } from "chai";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { 
-  TransferLimiter, 
-  MockERC20 
-} from "../typechain-types";
-import { 
-  SignerWithAddress 
-} from "@nomicfoundation/hardhat-ethers/signers";
-import { 
-  Contract, 
-  ContractTransactionResponse,
-  MaxUint256
-} from "ethers";
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("TransferLimiter", function () {
-  let transferLimiter: TransferLimiter;
-  let mockToken: MockERC20;
-  let owner: SignerWithAddress, 
-      admin: SignerWithAddress, 
-      limitManager: SignerWithAddress, 
-      user1: SignerWithAddress, 
-      user2: SignerWithAddress, 
-      user3: SignerWithAddress, 
-      contract1: SignerWithAddress;
-  
-  // Constants for roles
-  const ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE"));
-  const CONTRACT_ROLE = ethers.keccak256(ethers.toUtf8Bytes("CONTRACT_ROLE"));
-  const LIMIT_MANAGER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("LIMIT_MANAGER_ROLE"));
-  
-  // Test values
-  const DEFAULT_MAX_AMOUNT = ethers.parseEther("100");
-  const DEFAULT_COOLDOWN = 3600; // 1 hour in seconds
-  const USER_MAX_AMOUNT = ethers.parseEther("50");
-  const USER_COOLDOWN = 1800; // 30 minutes
-
-  beforeEach(async function () {
+  // Test fixture to deploy the contract and set up test accounts
+  async function deployTransferLimiterFixture() {
     // Get signers
-    [owner, admin, limitManager, user1, user2, user3, contract1] = await ethers.getSigners();
-    
-    // Deploy mock ERC20 token
-    const MockToken = await ethers.getContractFactory("MockERC20");
-    mockToken = await MockToken.deploy("Mock Token", "MTK", 18) as MockERC20;
-    await mockToken.waitForDeployment();
-    
-    // Deploy TransferLimiter contract
+    const [owner, admin, limitManager, user1, user2, tokenAddress, contractAddress] = await ethers.getSigners();
+
+    // Deploy the contract
     const TransferLimiter = await ethers.getContractFactory("TransferLimiter");
-    transferLimiter = await TransferLimiter.deploy() as TransferLimiter;
-    await transferLimiter.waitForDeployment();
-    
-    // Setup roles
-    await transferLimiter.grantRole(ADMIN_ROLE, admin.address);
-    await transferLimiter.grantRole(LIMIT_MANAGER_ROLE, limitManager.address);
-  });
+    const transferLimiter = await TransferLimiter.deploy();
+
+    // Get role hashes
+    const ADMIN_ROLE = await transferLimiter.ADMIN_ROLE();
+    const CONTRACT_ROLE = await transferLimiter.CONTRACT_ROLE();
+    const LIMIT_MANAGER_ROLE = await transferLimiter.LIMIT_MANAGER_ROLE();
+    const DEFAULT_ADMIN_ROLE = await transferLimiter.DEFAULT_ADMIN_ROLE();
+
+    return { 
+      transferLimiter, 
+      owner, 
+      admin, 
+      limitManager, 
+      user1, 
+      user2, 
+      tokenAddress, 
+      contractAddress,
+      ADMIN_ROLE,
+      CONTRACT_ROLE,
+      LIMIT_MANAGER_ROLE,
+      DEFAULT_ADMIN_ROLE
+    };
+  }
 
   describe("Deployment", function () {
-    it("should set the correct roles for the deployer", async function () {
-      const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    it("Should set the right owner roles", async function () {
+      const { transferLimiter, owner, DEFAULT_ADMIN_ROLE, ADMIN_ROLE, LIMIT_MANAGER_ROLE } = await loadFixture(deployTransferLimiterFixture);
       
       expect(await transferLimiter.hasRole(DEFAULT_ADMIN_ROLE, owner.address)).to.be.true;
       expect(await transferLimiter.hasRole(ADMIN_ROLE, owner.address)).to.be.true;
@@ -65,321 +44,482 @@ describe("TransferLimiter", function () {
     });
   });
 
-  describe("Access Control", function () {
-    it("should allow admin to add limit manager", async function () {
-      await transferLimiter.connect(admin).addLimitManager(user1.address);
-      expect(await transferLimiter.hasRole(LIMIT_MANAGER_ROLE, user1.address)).to.be.true;
+  describe("Role Management", function () {
+    it("Should allow adding a limit manager", async function () {
+      const { transferLimiter, owner, limitManager, LIMIT_MANAGER_ROLE } = await loadFixture(deployTransferLimiterFixture);
+      
+      await transferLimiter.addLimitManager(limitManager.address);
+      expect(await transferLimiter.hasRole(LIMIT_MANAGER_ROLE, limitManager.address)).to.be.true;
     });
 
-    it("should allow admin to remove limit manager", async function () {
-      await transferLimiter.connect(admin).addLimitManager(user1.address);
-      await transferLimiter.connect(admin).removeLimitManager(user1.address);
-      expect(await transferLimiter.hasRole(LIMIT_MANAGER_ROLE, user1.address)).to.be.false;
+    it("Should allow removing a limit manager", async function () {
+      const { transferLimiter, owner, limitManager, LIMIT_MANAGER_ROLE } = await loadFixture(deployTransferLimiterFixture);
+      
+      await transferLimiter.addLimitManager(limitManager.address);
+      expect(await transferLimiter.hasRole(LIMIT_MANAGER_ROLE, limitManager.address)).to.be.true;
+      
+      await transferLimiter.removeLimitManager(limitManager.address);
+      expect(await transferLimiter.hasRole(LIMIT_MANAGER_ROLE, limitManager.address)).to.be.false;
     });
 
-    it("should allow admin to authorize contract", async function () {
-      await transferLimiter.connect(admin).authorizeContract(contract1.address);
-      expect(await transferLimiter.hasRole(CONTRACT_ROLE, contract1.address)).to.be.true;
+    it("Should allow authorizing a contract", async function () {
+      const { transferLimiter, contractAddress, CONTRACT_ROLE } = await loadFixture(deployTransferLimiterFixture);
+      
+      await transferLimiter.authorizeContract(contractAddress.address);
+      expect(await transferLimiter.hasRole(CONTRACT_ROLE, contractAddress.address)).to.be.true;
     });
 
-    it("should revert when non-admin tries to add limit manager", async function () {
-      await expect(
-        transferLimiter.connect(user1).addLimitManager(user2.address)
-      ).to.be.revertedWithCustomError(transferLimiter, "AccessControlUnauthorizedAccount");
-    });
-
-    it("should revert when authorizing zero address as contract", async function () {
-      await expect(
-        transferLimiter.connect(admin).authorizeContract(ethers.ZeroAddress)
-      ).to.be.revertedWithCustomError(transferLimiter, "ZeroAddress");
+    it("Should revert when authorizing zero address as contract", async function () {
+      const { transferLimiter } = await loadFixture(deployTransferLimiterFixture);
+      
+      await expect(transferLimiter.authorizeContract(ethers.ZeroAddress))
+        .to.be.revertedWithCustomError(transferLimiter, "ZeroAddress");
     });
   });
 
-  describe("Default Limits", function () {
-    it("should allow admin to set default max transfer amount", async function () {
-      await transferLimiter.connect(admin).setDefaultMaxTransferAmount(mockToken.target, DEFAULT_MAX_AMOUNT);
-      expect(await transferLimiter.defaultMaxTransferAmount(mockToken.target)).to.equal(DEFAULT_MAX_AMOUNT);
+  describe("Default Settings", function () {
+    it("Should set default max transfer amount", async function () {
+      const { transferLimiter, tokenAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      const amount = ethers.parseEther("100");
+      await transferLimiter.setDefaultMaxTransferAmount(tokenAddress.address, amount);
+      
+      expect(await transferLimiter.defaultMaxTransferAmount(tokenAddress.address)).to.equal(amount);
     });
 
-    it("should allow admin to set default cooldown", async function () {
-      await transferLimiter.connect(admin).setDefaultCooldown(mockToken.target, DEFAULT_COOLDOWN);
-      expect(await transferLimiter.defaultTransferCooldown(mockToken.target)).to.equal(DEFAULT_COOLDOWN);
+    it("Should revert when setting default max transfer amount to zero", async function () {
+      const { transferLimiter, tokenAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      await expect(transferLimiter.setDefaultMaxTransferAmount(tokenAddress.address, 0))
+        .to.be.revertedWithCustomError(transferLimiter, "AmountTooSmall");
     });
 
-    it("should revert when setting default max amount to zero", async function () {
-      await expect(
-        transferLimiter.connect(admin).setDefaultMaxTransferAmount(mockToken.target, 0)
-      ).to.be.revertedWithCustomError(transferLimiter, "AmountTooSmall");
+    it("Should set default cooldown", async function () {
+      const { transferLimiter, tokenAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      const cooldown = 3600; // 1 hour in seconds
+      await transferLimiter.setDefaultCooldown(tokenAddress.address, cooldown);
+      
+      expect(await transferLimiter.defaultTransferCooldown(tokenAddress.address)).to.equal(cooldown);
     });
 
-    it("should emit event when setting default max transfer amount", async function () {
-      await expect(transferLimiter.connect(admin).setDefaultMaxTransferAmount(mockToken.target, DEFAULT_MAX_AMOUNT))
-        .to.emit(transferLimiter, "DefaultMaxTransferUpdated")
-        .withArgs(mockToken.target, DEFAULT_MAX_AMOUNT);
-    });
-
-    it("should emit event when setting default cooldown", async function () {
-      await expect(transferLimiter.connect(admin).setDefaultCooldown(mockToken.target, DEFAULT_COOLDOWN))
-        .to.emit(transferLimiter, "DefaultCooldownUpdated")
-        .withArgs(mockToken.target, DEFAULT_COOLDOWN);
+    it("Should set default period limit", async function () {
+      const { transferLimiter, tokenAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      const amount = ethers.parseEther("1000");
+      const periodSeconds = 86400; // 24 hours in seconds
+      await transferLimiter.setDefaultPeriodLimit(tokenAddress.address, amount, periodSeconds);
+      
+      expect(await transferLimiter.defaultPeriodLimit(tokenAddress.address)).to.equal(amount);
+      expect(await transferLimiter.defaultPeriodDuration(tokenAddress.address)).to.equal(periodSeconds);
     });
   });
 
-  describe("User-specific Limits", function () {
-    it("should allow limit manager to set user max transfer amount", async function () {
+  describe("User-specific Settings", function () {
+    it("Should set user max transfer amount", async function () {
+      const { transferLimiter, tokenAddress, user1, limitManager } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Add limit manager role
+      await transferLimiter.addLimitManager(limitManager.address);
+      
+      const amount = ethers.parseEther("50");
+      await transferLimiter.connect(limitManager).setUserMaxTransferAmount(tokenAddress.address, user1.address, amount);
+      
+      expect(await transferLimiter.userMaxTransferAmount(tokenAddress.address, user1.address)).to.equal(amount);
+      expect(await transferLimiter.hasCustomLimits(tokenAddress.address, user1.address)).to.be.true;
+    });
+
+    it("Should set user cooldown", async function () {
+      const { transferLimiter, tokenAddress, user1, limitManager } = await loadFixture(deployTransferLimiterFixture);
+      
+      await transferLimiter.addLimitManager(limitManager.address);
+      
+      const cooldown = 1800; // 30 minutes in seconds
+      await transferLimiter.connect(limitManager).setUserCooldown(tokenAddress.address, user1.address, cooldown);
+      
+      expect(await transferLimiter.userTransferCooldown(tokenAddress.address, user1.address)).to.equal(cooldown);
+      expect(await transferLimiter.hasCustomCooldown(tokenAddress.address, user1.address)).to.be.true;
+    });
+
+    it("Should set user period limit", async function () {
+      const { transferLimiter, tokenAddress, user1, limitManager } = await loadFixture(deployTransferLimiterFixture);
+      
+      await transferLimiter.addLimitManager(limitManager.address);
+      
+      const amount = ethers.parseEther("500");
+      const periodSeconds = 43200; // 12 hours in seconds
+      await transferLimiter.connect(limitManager).setUserPeriodLimit(
+        tokenAddress.address, user1.address, amount, periodSeconds
+      );
+      
+      expect(await transferLimiter.userPeriodLimit(tokenAddress.address, user1.address)).to.equal(amount);
+      expect(await transferLimiter.userPeriodDuration(tokenAddress.address, user1.address)).to.equal(periodSeconds);
+      expect(await transferLimiter.hasCustomPeriodLimit(tokenAddress.address, user1.address)).to.be.true;
+    });
+
+    it("Should reset user to default settings", async function () {
+      const { transferLimiter, tokenAddress, user1, limitManager } = await loadFixture(deployTransferLimiterFixture);
+      
+      await transferLimiter.addLimitManager(limitManager.address);
+      
+      // Set custom user settings
       await transferLimiter.connect(limitManager).setUserMaxTransferAmount(
-        mockToken.target, user1.address, USER_MAX_AMOUNT
-      );
-      
-      expect(await transferLimiter.userMaxTransferAmount(mockToken.target, user1.address)).to.equal(USER_MAX_AMOUNT);
-      expect(await transferLimiter.hasCustomLimits(mockToken.target, user1.address)).to.be.true;
-    });
-
-    it("should allow limit manager to set user cooldown", async function () {
-      await transferLimiter.connect(limitManager).setUserCooldown(
-        mockToken.target, user1.address, USER_COOLDOWN
-      );
-      
-      expect(await transferLimiter.userTransferCooldown(mockToken.target, user1.address)).to.equal(USER_COOLDOWN);
-      expect(await transferLimiter.hasCustomCooldown(mockToken.target, user1.address)).to.be.true;
-    });
-
-    it("should allow limit manager to reset user to default", async function () {
-      // First set custom limits
-      await transferLimiter.connect(limitManager).setUserMaxTransferAmount(
-        mockToken.target, user1.address, USER_MAX_AMOUNT
+        tokenAddress.address, user1.address, ethers.parseEther("50")
       );
       await transferLimiter.connect(limitManager).setUserCooldown(
-        mockToken.target, user1.address, USER_COOLDOWN
+        tokenAddress.address, user1.address, 1800
+      );
+      await transferLimiter.connect(limitManager).setUserPeriodLimit(
+        tokenAddress.address, user1.address, ethers.parseEther("500"), 43200
       );
       
-      // Then reset to default
-      await transferLimiter.connect(limitManager).resetUserToDefault(mockToken.target, user1.address);
+      // Reset to defaults
+      await transferLimiter.connect(limitManager).resetUserToDefault(tokenAddress.address, user1.address);
       
-      expect(await transferLimiter.hasCustomLimits(mockToken.target, user1.address)).to.be.false;
-      expect(await transferLimiter.hasCustomCooldown(mockToken.target, user1.address)).to.be.false;
-    });
-
-    it("should revert when setting user max amount to zero", async function () {
-      await expect(
-        transferLimiter.connect(limitManager).setUserMaxTransferAmount(mockToken.target, user1.address, 0)
-      ).to.be.revertedWithCustomError(transferLimiter, "AmountTooSmall");
+      expect(await transferLimiter.hasCustomLimits(tokenAddress.address, user1.address)).to.be.false;
+      expect(await transferLimiter.hasCustomCooldown(tokenAddress.address, user1.address)).to.be.false;
+      expect(await transferLimiter.hasCustomPeriodLimit(tokenAddress.address, user1.address)).to.be.false;
     });
   });
 
   describe("Exemptions", function () {
-    it("should allow admin to set exemption", async function () {
-      await transferLimiter.connect(admin).setExemption(mockToken.target, user1.address, true);
-      expect(await transferLimiter.exemptFromLimits(mockToken.target, user1.address)).to.be.true;
-    });
-
-    it("should emit event when setting exemption", async function () {
-      await expect(transferLimiter.connect(admin).setExemption(mockToken.target, user1.address, true))
-        .to.emit(transferLimiter, "ExemptionUpdated")
-        .withArgs(mockToken.target, user1.address, true);
-    });
-
-    it("should allow admin to remove exemption", async function () {
-      await transferLimiter.connect(admin).setExemption(mockToken.target, user1.address, true);
-      await transferLimiter.connect(admin).setExemption(mockToken.target, user1.address, false);
-      expect(await transferLimiter.exemptFromLimits(mockToken.target, user1.address)).to.be.false;
-    });
-  });
-
-  describe("Transfer Limit Enforcement", function () {
-    beforeEach(async function () {
-      // Set up default limits
-      await transferLimiter.connect(admin).setDefaultMaxTransferAmount(mockToken.target, DEFAULT_MAX_AMOUNT);
-      await transferLimiter.connect(admin).setDefaultCooldown(mockToken.target, DEFAULT_COOLDOWN);
+    it("Should set exemption status", async function () {
+      const { transferLimiter, tokenAddress, user1 } = await loadFixture(deployTransferLimiterFixture);
       
-      // Set up user-specific limits for user1
-      await transferLimiter.connect(limitManager).setUserMaxTransferAmount(
-        mockToken.target, user1.address, USER_MAX_AMOUNT
-      );
-    });
-
-    it("should allow transfer within default limits", async function () {
-      const amountToTransfer = DEFAULT_MAX_AMOUNT - 1n;
-      expect(
-        await transferLimiter.checkTransferLimit(mockToken.target, user2.address, amountToTransfer)
-      ).to.be.true;
-    });
-
-    it("should allow transfer within user-specific limits", async function () {
-      const amountToTransfer = USER_MAX_AMOUNT - 1n;
-      expect(
-        await transferLimiter.checkTransferLimit(mockToken.target, user1.address, amountToTransfer)
-      ).to.be.true;
-    });
-
-    it("should not allow transfer exceeding user-specific limits", async function () {
-      const amountToTransfer = USER_MAX_AMOUNT + 1n;
-      expect(
-        await transferLimiter.checkTransferLimit(mockToken.target, user1.address, amountToTransfer)
-      ).to.be.false;
-    });
-
-    it("should allow any transfer amount for exempt users", async function () {
-      const largeAmount = DEFAULT_MAX_AMOUNT * 10n;
-      await transferLimiter.connect(admin).setExemption(mockToken.target, user3.address, true);
-      expect(
-        await transferLimiter.checkTransferLimit(mockToken.target, user3.address, largeAmount)
-      ).to.be.true;
-    });
-  });
-
-  describe("Cooldown Enforcement", function () {
-    beforeEach(async function () {
-      // Set up default cooldown
-      await transferLimiter.connect(admin).setDefaultCooldown(mockToken.target, DEFAULT_COOLDOWN);
+      // Set user as exempt
+      await transferLimiter.setExemption(tokenAddress.address, user1.address, true);
+      expect(await transferLimiter.exemptFromLimits(tokenAddress.address, user1.address)).to.be.true;
       
-      // Set up user-specific cooldown for user1
-      await transferLimiter.connect(limitManager).setUserCooldown(
-        mockToken.target, user1.address, USER_COOLDOWN
-      );
+      // Remove exemption
+      await transferLimiter.setExemption(tokenAddress.address, user1.address, false);
+      expect(await transferLimiter.exemptFromLimits(tokenAddress.address, user1.address)).to.be.false;
     });
 
-    it("should allow first transfer with default cooldown", async function () {
-      expect(await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user2.address))
-        .to.be.true;
-    });
-
-    it("should block second transfer before default cooldown expires", async function () {
-      // First transfer
-      await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user2.address);
+    it("Should batch set exemptions", async function () {
+      const { transferLimiter, tokenAddress, user1, user2 } = await loadFixture(deployTransferLimiterFixture);
       
-      // Second transfer too soon
-      await expect(
-        transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user2.address)
-      ).to.be.revertedWithCustomError(transferLimiter, "CooldownNotElapsed");
-    });
-
-    it("should allow second transfer after default cooldown expires", async function () {
-      // First transfer
-      await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user2.address);
+      const accounts = [user1.address, user2.address];
+      await transferLimiter.batchSetExemptions(tokenAddress.address, accounts, true);
       
-      // Increase time to expire cooldown
-      await time.increase(DEFAULT_COOLDOWN + 1);
-      
-      // Second transfer should succeed
-      expect(await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user2.address))
-        .to.be.true;
-    });
-
-    it("should block second transfer before user-specific cooldown expires", async function () {
-      // First transfer
-      await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user1.address);
-      
-      // Second transfer too soon
-      await expect(
-        transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user1.address)
-      ).to.be.revertedWithCustomError(transferLimiter, "CooldownNotElapsed");
-    });
-
-    it("should allow transfer anytime for exempt users", async function () {
-      await transferLimiter.connect(admin).setExemption(mockToken.target, user3.address, true);
-      
-      // First transfer
-      await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user3.address);
-      
-      // Second transfer immediately should succeed
-      expect(await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user3.address))
-        .to.be.true;
+      expect(await transferLimiter.exemptFromLimits(tokenAddress.address, user1.address)).to.be.true;
+      expect(await transferLimiter.exemptFromLimits(tokenAddress.address, user2.address)).to.be.true;
     });
   });
 
   describe("Batch Operations", function () {
-    it("should set batch user limits correctly", async function () {
-      const users = [user1.address, user2.address, user3.address];
-      const amounts = [ethers.parseEther("10"), ethers.parseEther("20"), ethers.parseEther("30")];
-      const cooldowns = [600, 1200, 1800];
+    it("Should batch set user limits", async function () {
+      const { transferLimiter, tokenAddress, limitManager, user1, user2 } = await loadFixture(deployTransferLimiterFixture);
+      
+      await transferLimiter.addLimitManager(limitManager.address);
+      
+      const users = [user1.address, user2.address];
+      const amounts = [ethers.parseEther("50"), ethers.parseEther("75")];
+      const cooldowns = [1800, 3600];
+      const periodLimits = [ethers.parseEther("500"), ethers.parseEther("750")];
+      const periodDurations = [43200, 86400];
       
       await transferLimiter.connect(limitManager).batchSetUserLimits(
-        mockToken.target, users, amounts, cooldowns
+        tokenAddress.address, users, amounts, cooldowns, periodLimits, periodDurations
       );
       
-      expect(await transferLimiter.userMaxTransferAmount(mockToken.target, user1.address)).to.equal(amounts[0]);
-      expect(await transferLimiter.userMaxTransferAmount(mockToken.target, user2.address)).to.equal(amounts[1]);
-      expect(await transferLimiter.userMaxTransferAmount(mockToken.target, user3.address)).to.equal(amounts[2]);
-      
-      expect(await transferLimiter.userTransferCooldown(mockToken.target, user1.address)).to.equal(cooldowns[0]);
-      expect(await transferLimiter.userTransferCooldown(mockToken.target, user2.address)).to.equal(cooldowns[1]);
-      expect(await transferLimiter.userTransferCooldown(mockToken.target, user3.address)).to.equal(cooldowns[2]);
+      expect(await transferLimiter.userMaxTransferAmount(tokenAddress.address, user1.address)).to.equal(amounts[0]);
+      expect(await transferLimiter.userMaxTransferAmount(tokenAddress.address, user2.address)).to.equal(amounts[1]);
+      expect(await transferLimiter.userTransferCooldown(tokenAddress.address, user1.address)).to.equal(cooldowns[0]);
+      expect(await transferLimiter.userTransferCooldown(tokenAddress.address, user2.address)).to.equal(cooldowns[1]);
     });
 
-    it("should set batch exemptions correctly", async function () {
-      const accounts = [user1.address, user2.address, user3.address];
-      const status = true;
+    it("Should revert on array length mismatch", async function () {
+      const { transferLimiter, tokenAddress, limitManager, user1, user2 } = await loadFixture(deployTransferLimiterFixture);
       
-      await transferLimiter.connect(admin).batchSetExemptions(
-        mockToken.target, accounts, status
-      );
+      await transferLimiter.addLimitManager(limitManager.address);
       
-      expect(await transferLimiter.exemptFromLimits(mockToken.target, user1.address)).to.equal(status);
-      expect(await transferLimiter.exemptFromLimits(mockToken.target, user2.address)).to.equal(status);
-      expect(await transferLimiter.exemptFromLimits(mockToken.target, user3.address)).to.equal(status);
-    });
-
-    it("should revert batch user limits on array length mismatch", async function () {
       const users = [user1.address, user2.address];
-      const amounts = [ethers.parseEther("10")]; // Shorter array
-      const cooldowns = [600, 1200];
+      const amounts = [ethers.parseEther("50")]; // Only one element
+      const cooldowns = [1800, 3600];
+      const periodLimits = [ethers.parseEther("500"), ethers.parseEther("750")];
+      const periodDurations = [43200, 86400];
       
-      await expect(
-        transferLimiter.connect(limitManager).batchSetUserLimits(mockToken.target, users, amounts, cooldowns)
-      ).to.be.revertedWith("Array length mismatch");
+      await expect(transferLimiter.connect(limitManager).batchSetUserLimits(
+        tokenAddress.address, users, amounts, cooldowns, periodLimits, periodDurations
+      )).to.be.revertedWithCustomError(transferLimiter, "ArrayLengthMismatch");
     });
   });
 
-  describe("Helper Functions", function () {
-    beforeEach(async function () {
-      // Set up default limits
-      await transferLimiter.connect(admin).setDefaultMaxTransferAmount(mockToken.target, DEFAULT_MAX_AMOUNT);
-      await transferLimiter.connect(admin).setDefaultCooldown(mockToken.target, DEFAULT_COOLDOWN);
+  describe("Transfer Limit Checking", function () {
+    it("Should pass transfer limit check for exempt users", async function () {
+      const { transferLimiter, tokenAddress, user1, contractAddress } = await loadFixture(deployTransferLimiterFixture);
       
-      // Set up user-specific limits for user1
+      // Set default limit
+      await transferLimiter.setDefaultMaxTransferAmount(tokenAddress.address, ethers.parseEther("100"));
+      
+      // Set user as exempt
+      await transferLimiter.setExemption(tokenAddress.address, user1.address, true);
+      
+      // Check large transfer amount (above the limit)
+      const result = await transferLimiter.checkTransferLimit(
+        tokenAddress.address, user1.address, ethers.parseEther("200")
+      );
+      
+      expect(result).to.be.true;
+    });
+    
+    it("Should fail transfer limit check when exceeding max amount", async function () {
+      const { transferLimiter, tokenAddress, user1 } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Set default limit
+      await transferLimiter.setDefaultMaxTransferAmount(tokenAddress.address, ethers.parseEther("100"));
+      
+      // Check transfer above limit
+      const result = await transferLimiter.checkTransferLimit(
+        tokenAddress.address, user1.address, ethers.parseEther("150")
+      );
+      
+      expect(result).to.be.false;
+    });
+    
+    it("Should pass transfer limit check when under max amount", async function () {
+      const { transferLimiter, tokenAddress, user1 } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Set default limit
+      await transferLimiter.setDefaultMaxTransferAmount(tokenAddress.address, ethers.parseEther("100"));
+      
+      // Check transfer below limit
+      const result = await transferLimiter.checkTransferLimit(
+        tokenAddress.address, user1.address, ethers.parseEther("50")
+      );
+      
+      expect(result).to.be.true;
+    });
+  });
+
+  describe("Cooldown Enforcement", function () {
+    it("Should enforce cooldown period", async function () {
+      const { transferLimiter, tokenAddress, user1, contractAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Set default cooldown to 1 hour
+      await transferLimiter.setDefaultCooldown(tokenAddress.address, 3600);
+      
+      // First transfer should pass
+      await transferLimiter.enforceCooldown(tokenAddress.address, user1.address);
+      
+      // Immediate second transfer should fail
+      await expect(transferLimiter.enforceCooldown(tokenAddress.address, user1.address))
+        .to.be.revertedWithCustomError(transferLimiter, "CooldownNotElapsed");
+    });
+    
+    it("Should allow transfer after cooldown period", async function () {
+      const { transferLimiter, tokenAddress, user1 } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Set default cooldown to 1 hour
+      await transferLimiter.setDefaultCooldown(tokenAddress.address, 3600);
+      
+      // First transfer
+      await transferLimiter.enforceCooldown(tokenAddress.address, user1.address);
+      
+      // Advance time by more than the cooldown
+      await time.increase(4000);
+      
+      // Second transfer should succeed
+      await expect(transferLimiter.enforceCooldown(tokenAddress.address, user1.address))
+        .to.not.be.reverted;
+    });
+    
+    it("Should skip cooldown for exempt users", async function () {
+      const { transferLimiter, tokenAddress, user1 } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Set default cooldown to 1 hour
+      await transferLimiter.setDefaultCooldown(tokenAddress.address, 3600);
+      
+      // Set user as exempt
+      await transferLimiter.setExemption(tokenAddress.address, user1.address, true);
+      
+      // Multiple transfers should pass without cooldown
+      await transferLimiter.enforceCooldown(tokenAddress.address, user1.address);
+      await transferLimiter.enforceCooldown(tokenAddress.address, user1.address);
+      await transferLimiter.enforceCooldown(tokenAddress.address, user1.address);
+    });
+  });
+
+  describe("Period Limit Tracking", function () {
+    it("Should track transfers within a period", async function () {
+      const { transferLimiter, tokenAddress, user1, contractAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Authorize contract to call recordTransfer
+      await transferLimiter.authorizeContract(contractAddress.address);
+      
+      // Set period limit to 100 tokens over 24 hours
+      await transferLimiter.setDefaultPeriodLimit(tokenAddress.address, ethers.parseEther("100"), 86400);
+      
+      // Record transfer of 30 tokens
+      await transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("30")
+      );
+      
+      // Check period total
+      expect(await transferLimiter.periodTotalTransferred(tokenAddress.address, user1.address))
+        .to.equal(ethers.parseEther("30"));
+      
+      // Record another transfer of 40 tokens
+      await transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("40")
+      );
+      
+      // Check updated period total
+      expect(await transferLimiter.periodTotalTransferred(tokenAddress.address, user1.address))
+        .to.equal(ethers.parseEther("70"));
+    });
+    
+    it("Should reject transfer that exceeds period limit", async function () {
+      const { transferLimiter, tokenAddress, user1, contractAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Authorize contract to call recordTransfer
+      await transferLimiter.authorizeContract(contractAddress.address);
+      
+      // Set period limit to 100 tokens over 24 hours
+      await transferLimiter.setDefaultPeriodLimit(tokenAddress.address, ethers.parseEther("100"), 86400);
+      
+      // Record transfer of 70 tokens
+      await transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("70")
+      );
+      
+      // Trying to transfer another 40 tokens should fail (exceeds 100 limit)
+      await expect(transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("40")
+      )).to.be.revertedWithCustomError(transferLimiter, "ExceedsPeriodLimit");
+    });
+    
+    it("Should reset period counter after period expiration", async function () {
+      const { transferLimiter, tokenAddress, user1, contractAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Authorize contract to call recordTransfer
+      await transferLimiter.authorizeContract(contractAddress.address);
+      
+      // Set period limit to 100 tokens over 1 hour
+      await transferLimiter.setDefaultPeriodLimit(tokenAddress.address, ethers.parseEther("100"), 3600);
+      
+      // Record transfer of 70 tokens
+      await transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("70")
+      );
+      
+      // Advance time beyond the period
+      await time.increase(4000);
+      
+      // Record another transfer of 70 tokens (should succeed because period reset)
+      await transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("70")
+      );
+      
+      // Period total should be 70 (reset from previous period)
+      expect(await transferLimiter.periodTotalTransferred(tokenAddress.address, user1.address))
+        .to.equal(ethers.parseEther("70"));
+    });
+    
+    it("Should initialize period reset time on first transfer", async function () {
+      const { transferLimiter, tokenAddress, user1, contractAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Authorize contract to call recordTransfer
+      await transferLimiter.authorizeContract(contractAddress.address);
+      
+      // Set period limit to 100 tokens over 1 hour
+      await transferLimiter.setDefaultPeriodLimit(tokenAddress.address, ethers.parseEther("100"), 3600);
+      
+      // Before transfer, reset time should be 0
+      expect(await transferLimiter.periodResetTime(tokenAddress.address, user1.address)).to.equal(0);
+      
+      // Record transfer
+      await transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("30")
+      );
+      
+      // After transfer, reset time should be set
+      const resetTime = await transferLimiter.periodResetTime(tokenAddress.address, user1.address);
+      expect(resetTime).to.be.gt(0);
+    });
+    
+    it("Should manually reset user period", async function () {
+      const { transferLimiter, tokenAddress, user1, limitManager, contractAddress } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Add limit manager role
+      await transferLimiter.addLimitManager(limitManager.address);
+      
+      // Authorize contract to call recordTransfer
+      await transferLimiter.authorizeContract(contractAddress.address);
+      
+      // Set period limit
+      await transferLimiter.setDefaultPeriodLimit(tokenAddress.address, ethers.parseEther("100"), 3600);
+      
+      // Record transfer
+      await transferLimiter.connect(contractAddress).recordTransfer(
+        tokenAddress.address, user1.address, ethers.parseEther("70")
+      );
+      
+      // Manually reset period
+      await transferLimiter.connect(limitManager).resetUserPeriod(tokenAddress.address, user1.address);
+      
+      // Period total should be reset to 0
+      expect(await transferLimiter.periodTotalTransferred(tokenAddress.address, user1.address))
+        .to.equal(0);
+      
+      // Check that period reset time is updated
+      const resetTime = await transferLimiter.periodResetTime(tokenAddress.address, user1.address);
+      expect(resetTime).to.be.gt(0);
+    });
+  });
+
+  describe("Getter Functions", function () {
+    it("Should get effective max transfer amount", async function () {
+      const { transferLimiter, tokenAddress, user1, limitManager } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Set default max transfer amount
+      await transferLimiter.setDefaultMaxTransferAmount(tokenAddress.address, ethers.parseEther("100"));
+      
+      // Check effective amount for user with default settings
+      expect(await transferLimiter.getEffectiveMaxTransferAmount(tokenAddress.address, user1.address))
+        .to.equal(ethers.parseEther("100"));
+      
+      // Add limit manager and set custom limit for user
+      await transferLimiter.addLimitManager(limitManager.address);
       await transferLimiter.connect(limitManager).setUserMaxTransferAmount(
-        mockToken.target, user1.address, USER_MAX_AMOUNT
-      );
-      await transferLimiter.connect(limitManager).setUserCooldown(
-        mockToken.target, user1.address, USER_COOLDOWN
+        tokenAddress.address, user1.address, ethers.parseEther("50")
       );
       
-      // Set up exemption for user3
-      await transferLimiter.connect(admin).setExemption(mockToken.target, user3.address, true);
+      // Check effective amount with custom settings
+      expect(await transferLimiter.getEffectiveMaxTransferAmount(tokenAddress.address, user1.address))
+        .to.equal(ethers.parseEther("50"));
+      
+      // Set user as exempt
+      await transferLimiter.setExemption(tokenAddress.address, user1.address, true);
+      
+      // Exempt users should have no limit
+      expect(await transferLimiter.getEffectiveMaxTransferAmount(tokenAddress.address, user1.address))
+        .to.equal(ethers.MaxUint256);
     });
-
-    it("should return correct effective max transfer amount", async function () {
-      expect(await transferLimiter.getEffectiveMaxTransferAmount(mockToken.target, user1.address))
-        .to.equal(USER_MAX_AMOUNT);
-      expect(await transferLimiter.getEffectiveMaxTransferAmount(mockToken.target, user2.address))
-        .to.equal(DEFAULT_MAX_AMOUNT);
-      expect(await transferLimiter.getEffectiveMaxTransferAmount(mockToken.target, user3.address))
-        .to.equal(MaxUint256);
-    });
-
-    it("should return correct effective cooldown period", async function () {
-      expect(await transferLimiter.getEffectiveCooldownPeriod(mockToken.target, user1.address))
-        .to.equal(USER_COOLDOWN);
-      expect(await transferLimiter.getEffectiveCooldownPeriod(mockToken.target, user2.address))
-        .to.equal(DEFAULT_COOLDOWN);
-      expect(await transferLimiter.getEffectiveCooldownPeriod(mockToken.target, user3.address))
+    
+    it("Should get next valid transfer time", async function () {
+      const { transferLimiter, tokenAddress, user1 } = await loadFixture(deployTransferLimiterFixture);
+      
+      // Set default cooldown to 1 hour
+      await transferLimiter.setDefaultCooldown(tokenAddress.address, 3600);
+      
+      // Before any transfer, next valid time should be 0
+      expect(await transferLimiter.getNextValidTransferTime(tokenAddress.address, user1.address))
+        .to.equal(0);
+      
+      // Do first transfer
+      await transferLimiter.enforceCooldown(tokenAddress.address, user1.address);
+      
+      // After transfer, next valid time should be in the future
+      const nextValidTime = await transferLimiter.getNextValidTransferTime(tokenAddress.address, user1.address);
+      expect(nextValidTime).to.be.gt(0);
+      
+      // Advance time beyond cooldown
+      await time.increase(4000);
+      
+      // Next valid time should be 0 again (can transfer now)
+      expect(await transferLimiter.getNextValidTransferTime(tokenAddress.address, user1.address))
         .to.equal(0);
     });
-
-    // it("should return correct next valid transfer time", async function () {
-    //   // First transfer for user1
-    //   await transferLimiter.connect(contract1).enforceCooldown(mockToken.target, user1.address);
-      
-    //   const expectedNextTime = await time.latest() + BigInt(USER_COOLDOWN);
-    //   const actualNextTime = await transferLimiter.getNextValidTransferTime(mockToken.target, user1.address);
-      
-    //   // Allow for small timestamp differences
-    //   expect(actualNextTime).to.be.closeTo(expectedNextTime, 2);
-      
-    //   // Exempt user should have 0 next valid time
-    //   expect(await transferLimiter.getNextValidTransferTime(mockToken.target, user3.address))
-    //     .to.equal(0);
-    // });
   });
 });
