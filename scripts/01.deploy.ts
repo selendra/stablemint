@@ -1,78 +1,97 @@
-import { ethers } from "hardhat";
+const { ethers } = require("hardhat");
 
 async function main() {
+  console.log("Deploying TokenSwap contract...");
+
+  // Get deployer account
   const [deployer] = await ethers.getSigners();
-
-  console.log("Deploying contracts with account:", deployer.address);
+  console.log("Deploying contracts with the account:", deployer.address);
   console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
-  console.log("Current time:", new Date().toISOString());
 
-  // Deploy Whitelist with whitelisting enabled
-  console.log("\n1. Deploying Whitelist...");
-  const Whitelist = await ethers.getContractFactory("Whitelist");
-  const whitelist = await Whitelist.deploy(true); // Enable whitelisting on deployment
-  await whitelist.waitForDeployment();
-  const whitelistAddress = await whitelist.getAddress();
-  console.log("   Whitelist deployed to:", whitelistAddress);
-
-  // Deploy TransferLimiter
-  console.log("\n2. Deploying TransferLimiter...");
-  const TransferLimiter = await ethers.getContractFactory("TransferLimiter");
-  const transferLimiter = await TransferLimiter.deploy();
-  await transferLimiter.waitForDeployment();
-  const transferLimiterAddress = await transferLimiter.getAddress();
-  console.log("   TransferLimiter deployed to:", transferLimiterAddress);
-
-  // Deploy StableCoin with links to utility contracts
-  console.log("\n3. Deploying StableCoin...");
-  const name = "Optimized Stable Coin";
-  const symbol = "OSC";
-  const initialSupply = 1000000n; // 1 million tokens initially
-  
+  // Get contract factories
   const StableCoin = await ethers.getContractFactory("StableCoin");
+  const ERC20Factory = await ethers.getContractFactory("ERC20Factory");
+  const TokenSwap = await ethers.getContractFactory("TokenSwap");
+
+  // Deploy StableCoin contract
+  console.log("Deploying StableCoin...");
   const stableCoin = await StableCoin.deploy(
-    name, 
-    symbol, 
-    initialSupply,
-    whitelistAddress,
-    transferLimiterAddress
+    "KHMER_RIEAL",
+    "KHR",
+    1000000
   );
   await stableCoin.waitForDeployment();
   const stableCoinAddress = await stableCoin.getAddress();
-  console.log("   StableCoin deployed to:", stableCoinAddress);
+  console.log("StableCoin deployed to:", stableCoinAddress);
 
-  // Configure TransferLimiter
-  console.log("\n4. Configuring TransferLimiter with default limits...");
+  // Assign StableCoin roles
+  const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
+  const WHITELIST_MANAGER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("WHITELIST_MANAGER_ROLE"));
   
-  // Create the LimitConfig struct
-  const limitConfig = {
-    maxTransferAmount: ethers.parseUnits("10000", 18),  // 10,000 tokens max per transfer
-    cooldownPeriod: 60n,                                // 1 minute cooldown between transfers
-    periodLimit: ethers.parseUnits("50000", 18),        // 50,000 tokens per period
-    periodDuration: 86400n                              // 24 hour period duration
-  };
-  
-  await transferLimiter.setAllDefaultLimits(stableCoinAddress, limitConfig);
-  console.log("   Default transfer limits configured");
-  
-  // Whitelist the deployer and exempt from limits
-  console.log("\n5. Setting up whitelisting and exemptions...");
-  await transferLimiter.setExemption(stableCoinAddress, deployer.address, true);
-  console.log("   Deployer exempted from transfer limits");
-  
-  // Add the StableCoin contract to whitelist for authorization
-  console.log("\n6. Finalizing permissions...");
-  await whitelist.authorizeContract(stableCoinAddress);
-  console.log("   StableCoin authorized in Whitelist");
-  await transferLimiter.authorizeContract(stableCoinAddress);
-  console.log("   StableCoin authorized in TransferLimiter");
+  console.log("Setting up StableCoin roles...");
+  await stableCoin.grantRole(MINTER_ROLE, deployer.address);
+  await stableCoin.grantRole(WHITELIST_MANAGER_ROLE, deployer.address);
 
-  console.log("\nDeployment complete! Summary:");
-  console.log(`- Whitelist:       ${whitelistAddress}`);
-  console.log(`- TransferLimiter: ${transferLimiterAddress}`);
-  console.log(`- StableCoin:      ${stableCoinAddress} (${symbol})`);
+  // Whitelist the deployer
+  await stableCoin.addToWhitelist(deployer.address);
+
+  // Deploy ERC20Factory contract
+  console.log("Deploying ERC20Factory...");
+  const factory = await ERC20Factory.deploy(
+    deployer.address,   // Owner
+    stableCoinAddress   // StableCoin address
+  );
+  await factory.waitForDeployment();
+  const factoryAddress = await factory.getAddress();
+  console.log("ERC20Factory deployed to:", factoryAddress);
+
+  // Set up Factory roles
+  const TOKEN_CREATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("TOKEN_CREATOR_ROLE"));
+  const FACTORY_MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("FACTORY_MINTER_ROLE"));
+  
+  console.log("Setting up Factory roles...");
+  await factory.grantRole(TOKEN_CREATOR_ROLE, deployer.address);
+  await factory.grantRole(FACTORY_MINTER_ROLE, deployer.address);
+
+  // Set up parameters for TokenSwap
+  const adminAddress = deployer.address;            // Using deployer as admin
+  const feeCollectorAddress = deployer.address;     // Using deployer as fee collector
+  const feePercentage = 25;                         // 0.25% fee
+
+  // Deploy TokenSwap
+  console.log("Deploying TokenSwap...");
+  const tokenSwap = await TokenSwap.deploy(
+    stableCoinAddress,
+    factoryAddress,
+    adminAddress,
+    feeCollectorAddress,
+    feePercentage
+  );
+  await tokenSwap.waitForDeployment();
+  const tokenSwapAddress = await tokenSwap.getAddress();
+  console.log("TokenSwap deployed to:", tokenSwapAddress);
+
+  // Whitelist the TokenSwap contract
+  console.log("Whitelisting TokenSwap contract...");
+  await stableCoin.addToWhitelist(tokenSwapAddress);
+
+  // Fund the TokenSwap contract with StableCoin
+  console.log("Funding TokenSwap with StableCoin...");
+  const fundAmount = ethers.parseUnits("100000", 18);  // 100,000 tokens with 18 decimals
+  await stableCoin.mint(tokenSwapAddress, fundAmount);
+
+  console.log("\nDeployment Summary:");
+  console.log("------------------");
+  console.log("StableCoin:", stableCoinAddress);
+  console.log("ERC20Factory:", factoryAddress);
+  console.log("TokenSwap:", tokenSwapAddress);
+  console.log("Admin:", adminAddress);
+  console.log("Fee Collector:", feeCollectorAddress);
+  console.log("Fee Percentage:", feePercentage / 100, "%");
+  console.log("\nTokenSwap is ready to use!");
 }
 
+// Run the deployment
 main()
   .then(() => process.exit(0))
   .catch((error) => {
