@@ -34,6 +34,10 @@ const config: HardhatUserConfig = {
       url: "http://127.0.0.1:9944",
       accounts: [PRIVATE_KEY, USER1, USER2, USER3],
     },
+    selendra: {
+      url: "https://rpc.selendra.org",
+      accounts: [PRIVATE_KEY, USER1, USER2, USER3],
+    },
     sepolia: {
       url: `https://sepolia.infura.io/v3/${INFURA_API_KEY}`,
       accounts: [PRIVATE_KEY],
