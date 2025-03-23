@@ -15,6 +15,7 @@ export const STABLECOIN_ABI = [
 ];
 
 export const STABLECOIN_ADMIN_ABI = [
+  "function transfer(address to, uint256 amount) external returns (bool)",
   "function addToWhitelist(address account) external",
   "function removeFromWhitelist(address account) external",
   "function batchAddToWhitelist(address[] calldata accounts) external",

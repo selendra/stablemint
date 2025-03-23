@@ -7,13 +7,13 @@ const provider_url = process.env.PROVIDER_URL
   : "https://rpc.selendra.org";
 const stableCoinAddress = process.env.STABLECOIN_ADDRESS
   ? process.env.STABLECOIN_ADDRESS
-  : "0xb7B9838d9d37444e50B08fCdf5Db2887d5D560d4";
+  : "0xD21b15d53c11392aD32ABC4Cc56b6002007e208D";
 const tokenFactoryAddress = process.env.TOKEN_FACTORY_ADDRESS
   ? process.env.TOKEN_FACTORY_ADDRESS
-  : "0xd7128352dA44c6f6f8D92B7945C446F493e22849";
+  : "0xFdD4147c1303bED2875767E793b48Bf8C9db79C9";
 const swapAddress = process.env.SWAP_ADDRESS
   ? process.env.SWAP_ADDRESS
-  : "0x02f0FEBea10b76574D05F8feF36b122FE1A0089e";
+  : "0x8ba7982A3978167927D071D6ca6519D4F0FB173B";
 
 async function main() {
   const admin = new Admin(
@@ -25,10 +25,7 @@ async function main() {
   );
 
   // // Add to whitelist
-  // const receipt = await admin.addToWhitelist(
-  //   "0x617F2E2fD72FD9D5503197092aC168c91465E7f2"
-  // );
-  // console.log(receipt);
+  // await admin.addToWhitelist("0x617F2E2fD72FD9D5503197092aC168c91465E7f2");
 
   // // Remove to whitelist
   // await admin.removeFromWhitelist("0x617F2E2fD72FD9D5503197092aC168c91465E7f2");
@@ -39,14 +36,14 @@ async function main() {
   //   "0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c",
   // ]);
 
-  // // set whitelist policy
-  // await admin.setWhitelistReceiverPolicy(true);
-  // console.log(await admin.checkEnforceWhitelist());
-
   // // check whitelist
   // console.log(
   //   await admin.checkWhitelist("0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c")
   // );
+
+  // // set whitelist policy
+  // await admin.setWhitelistReceiverPolicy(true);
+  // console.log(await admin.checkEnforceWhitelist());
 
   // // mint stable coin
   // await admin.mintStableCoin("0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c", 100);
@@ -55,6 +52,8 @@ async function main() {
   // console.log(
   //   await admin.checkBalance("0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c")
   // );
+
+  // console.log(await admin.checkTotalSupply());
 
   // // withdraw stable coin
   // await admin.withdrawStableCoin(
@@ -70,30 +69,38 @@ async function main() {
   // console.log(await admin.checkTotalSupply());
 
   // // pause/unpase stable coin
-  // await admin.pauseStableCoin();
-  // await admin.unpauseStableCoin();
-  // console.log(await admin.isPausedStableCoin());
+  // await admin.pauseContract(stableCoinAddress);
+  // await admin.unpauseContract(stableCoinAddress);
+  // console.log(await admin.isPausedContract(stableCoinAddress));
 
-  // await admin.mintToken();
-  // const res = await admin.createToken(
-  //   "Test",
-  //   "TST",
-  //   "0x617F2E2fD72FD9D5503197092aC168c91465E7f2",
-  //   1000
+  // // create token
+  // const addree = await admin.createToken(
+  //   "TestPoint",
+  //   "TSTA",
+  //   "0x8cfc1EeCA441a4554Fc3DFcea1fcBf25749C4ecD",
+  //   1
   // );
-  // console.log(res);
+  // console.log(addree);
+  // await admin.addToWhitelist(addree);
+
+  // console.log(await admin.checkWhitelist(addree));
 
   // console.log(
   //   await admin.isTokenCreatedByFactory(
-  //     "0x88335B165A47020C14726f18bFD5DfD567586b26"
+  //     "0xBd180BD7DBC1FcCd1567EE1E009Ba60dE977EaF8"
   //   )
+  // );
+
+  // await admin.transferStableCoin(
+  //   "0xBd180BD7DBC1FcCd1567EE1E009Ba60dE977EaF8",
+  //   11
   // );
 
   console.log(
     await admin.mintToken(
-      "0x88335B165A47020C14726f18bFD5DfD567586b26",
+      "0xBd180BD7DBC1FcCd1567EE1E009Ba60dE977EaF8",
       "0x3c3134B728b7905F53321Dae63883334b8Dbe2Ac",
-      1000000
+      1
     )
   );
 }

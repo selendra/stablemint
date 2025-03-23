@@ -23,6 +23,9 @@ contract ERC20Factory is AccessControl, ReentrancyGuard {
     // Tracking created tokens
     mapping(address => bool) public isTokenCreatedByFactory;
 
+    // Array to keep track of all created token addresses
+    address[] public allCreatedTokens;
+
     event TokenCreated(
         address indexed creator,
         address indexed tokenAddress,
@@ -66,24 +69,40 @@ contract ERC20Factory is AccessControl, ReentrancyGuard {
         address tokenOwner,
         uint256 tokensPerStableCoin
     ) external onlyRole(TOKEN_CREATOR_ROLE) nonReentrant returns (address) {
-        require(bytes(name).length > 0, "Token name cannot be empty");
-        require(bytes(symbol).length > 0, "Token symbol cannot be empty");
-        require(tokenOwner != address(0), "Cannot grant role to zero address");
-        require(
-            tokensPerStableCoin > 0,
-            "Tokens per StableCoin must be greater than zero"
-        );
+        // More specific error messages
+        if (bytes(name).length == 0) revert("Token name cannot be empty");
+        if (bytes(symbol).length == 0) revert("Token symbol cannot be empty");
+        if (tokenOwner == address(0))
+            revert("Cannot grant role to zero address");
+        if (tokensPerStableCoin == 0)
+            revert("Tokens per StableCoin must be greater than zero");
 
-        ERC20Token newToken = new ERC20Token(name, symbol, tokenOwner);
+        // Create token with try/catch to better handle errors
+        ERC20Token newToken;
+        try new ERC20Token(name, symbol, tokenOwner) returns (
+            ERC20Token _token
+        ) {
+            newToken = _token;
+        } catch Error(string memory reason) {
+            revert(
+                string(abi.encodePacked("Failed to create token: ", reason))
+            );
+        } catch {
+            revert("Failed to create token: unknown error");
+        }
 
         // Register the token
         address tokenAddress = address(newToken);
         isTokenCreatedByFactory[tokenAddress] = true;
 
+        // Add the token address to our array
+        allCreatedTokens.push(tokenAddress);
+
         // Set the initial ratio for this token
         tokenRatios[tokenAddress] = tokensPerStableCoin;
         emit TokenRatioSet(tokenAddress, tokensPerStableCoin);
 
+        // Emit event (this is critical to fix your issue)
         emit TokenCreated(msg.sender, tokenAddress, name, symbol, tokenOwner);
 
         return tokenAddress;
@@ -102,21 +121,30 @@ contract ERC20Factory is AccessControl, ReentrancyGuard {
         uint256 tokensPerStableCoin = tokenRatios[tokenAddress];
         require(tokensPerStableCoin > 0, "Token ratio not set");
 
+        ERC20Token token = ERC20Token(tokenAddress);
+
+        // Get the current total supply of the token
+        uint256 currentSupply = token.totalSupply();
+
         // Get the actual StableCoin balance held by the token address
         uint256 stableCoinBalance = stableCoin.balanceOf(tokenAddress);
 
         // Calculate maximum tokens that can be minted based on available StableCoin balance
         uint256 maxTokensAllowed = stableCoinBalance * tokensPerStableCoin;
 
-        // Ensure requested mint amount doesn't exceed the allowed amount
+        // Ensure the total supply after minting doesn't exceed the allowed amount
         require(
-            amount <= maxTokensAllowed,
-            "Requested mint amount exceeds available StableCoin collateral"
+            currentSupply + amount <= maxTokensAllowed,
+            "Total supply would exceed available StableCoin collateral"
         );
 
-        ERC20Token token = ERC20Token(tokenAddress);
         token.mint(to, amount);
 
         emit TokenMinted(tokenAddress, to, amount);
+    }
+
+    // Function to get all created token addresses
+    function getAllTokenAddresses() public view returns (address[] memory) {
+        return allCreatedTokens;
     }
 }

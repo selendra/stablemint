@@ -1,14 +1,9 @@
-// admin-interactions.ts
-// Functions for administrators to interact with the smart contract system
-// Updated for ethers v6.13.5
-
 import { ethers } from "ethers";
 import {
   Contract,
   Provider,
   Signer,
   ContractTransactionResponse,
-  TransactionReceipt,
   formatUnits,
   parseUnits,
   keccak256,
@@ -16,97 +11,12 @@ import {
 } from "ethers";
 import {
   ERC20FACTORY_ADMIN_ABI,
-  ERC20TOKEN_ADMIN_ABI,
+  PAUSE_ADMIN_ABI,
   ROLE_ADMIN_ABI,
   STABLECOIN_ADMIN_ABI,
   TOKENSWAP_ADMIN_ABI,
 } from "./abi";
-import { string } from "hardhat/internal/core/params/argumentTypes";
 import { TokenCreatedEvent } from "./interfaces";
-
-// Type definitions
-type ConnectWalletResult = {
-  signer: Signer;
-  address: string;
-};
-
-// ERC20Token Admin Functions
-export async function pauseToken(
-  tokenAddress: string,
-  signer: Signer
-): Promise<TransactionReceipt | null> {
-  const contract = new Contract(tokenAddress, ERC20TOKEN_ADMIN_ABI, signer);
-  const tx: ContractTransactionResponse = await contract.pause();
-  return await tx.wait();
-}
-
-export async function unpauseToken(
-  tokenAddress: string,
-  signer: Signer
-): Promise<TransactionReceipt | null> {
-  const contract = new Contract(tokenAddress, ERC20TOKEN_ADMIN_ABI, signer);
-  const tx: ContractTransactionResponse = await contract.unpause();
-  return await tx.wait();
-}
-
-// TokenSwap Admin Functions
-export async function setFeePercentage(
-  swapAddress: string,
-  feePercentage: number,
-  signer: Signer
-): Promise<TransactionReceipt | null> {
-  const contract = new Contract(swapAddress, TOKENSWAP_ADMIN_ABI, signer);
-  const tx: ContractTransactionResponse = await contract.setFeePercentage(
-    feePercentage
-  );
-  return await tx.wait();
-}
-
-export async function setFeeCollector(
-  swapAddress: string,
-  feeCollectorAddress: string,
-  signer: Signer
-): Promise<TransactionReceipt | null> {
-  const contract = new Contract(swapAddress, TOKENSWAP_ADMIN_ABI, signer);
-  const tx: ContractTransactionResponse = await contract.setFeeCollector(
-    feeCollectorAddress
-  );
-  return await tx.wait();
-}
-
-export async function pauseSwap(
-  swapAddress: string,
-  signer: Signer
-): Promise<TransactionReceipt | null> {
-  const contract = new Contract(swapAddress, TOKENSWAP_ADMIN_ABI, signer);
-  const tx: ContractTransactionResponse = await contract.pause();
-  return await tx.wait();
-}
-
-export async function unpauseSwap(
-  swapAddress: string,
-  signer: Signer
-): Promise<TransactionReceipt | null> {
-  const contract = new Contract(swapAddress, TOKENSWAP_ADMIN_ABI, signer);
-  const tx: ContractTransactionResponse = await contract.unpause();
-  return await tx.wait();
-}
-
-export async function emergencyWithdraw(
-  swapAddress: string,
-  tokenAddress: string,
-  amount: number,
-  toAddress: string,
-  signer: Signer
-): Promise<TransactionReceipt | null> {
-  const contract = new Contract(swapAddress, TOKENSWAP_ADMIN_ABI, signer);
-  const tx: ContractTransactionResponse = await contract.emergencyWithdraw(
-    tokenAddress,
-    parseUnits(amount.toString(), 18),
-    toAddress
-  );
-  return await tx.wait();
-}
 
 export class Admin {
   private provider: ethers.JsonRpcProvider;
@@ -141,8 +51,7 @@ export class Admin {
     );
   }
 
-  // --------------------- check balance StableCoin---------------------------------
-  async checkBalance(accountAddress: string): Promise<number> {
+  async checkBalance(accountAddress: string) {
     try {
       const balance = await this.stableCoin.balanceOf(accountAddress);
       return parseFloat(
@@ -157,9 +66,29 @@ export class Admin {
     }
   }
 
-  async checkTotalSupply(): Promise<number> {
+  async checkTotalSupply() {
     try {
       const balance = await this.stableCoin.totalSupply();
+      return parseFloat(
+        formatUnits ? formatUnits(balance, 18) : balance.toString()
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to check Total Supply: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async checkTokenBalance(tokenAddress: string, accountAddress: string) {
+    try {
+      const contract = new Contract(
+        tokenAddress,
+        ERC20FACTORY_ADMIN_ABI,
+        this.provider
+      );
+      const balance = await contract.balanceOf(accountAddress);
       return parseFloat(
         formatUnits ? formatUnits(balance, 18) : balance.toString()
       );
@@ -172,8 +101,27 @@ export class Admin {
     }
   }
 
-  // --------------------- Add/remove Whitelist StableCoin-------------------------------------
-  async checkEnforceWhitelist(): Promise<boolean> {
+  async checkTokenTotalSupply(tokenAddress: string) {
+    try {
+      const contract = new Contract(
+        tokenAddress,
+        ERC20FACTORY_ADMIN_ABI,
+        this.provider
+      );
+      const balance = await contract.totalSupply();
+      return parseFloat(
+        formatUnits ? formatUnits(balance, 18) : balance.toString()
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to check Total Supply: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async checkEnforceWhitelist() {
     try {
       const enforce = await this.stableCoin.enforceWhitelistForReceivers();
       return enforce;
@@ -186,7 +134,7 @@ export class Admin {
     }
   }
 
-  async checkWhitelist(accountAddress: string): Promise<boolean> {
+  async checkWhitelist(accountAddress: string) {
     try {
       const isWhiteList = await this.stableCoin.whitelisted(accountAddress);
       return isWhiteList;
@@ -199,9 +147,7 @@ export class Admin {
     }
   }
 
-  async setWhitelistReceiverPolicy(
-    enforceForReceivers: boolean
-  ): Promise<TransactionReceipt | null> {
+  async setWhitelistReceiverPolicy(enforceForReceivers: boolean) {
     try {
       const policy = await this.stableCoin.setWhitelistReceiverPolicy(
         enforceForReceivers
@@ -216,9 +162,7 @@ export class Admin {
     }
   }
 
-  async addToWhitelist(
-    accountAddress: string
-  ): Promise<TransactionReceipt | null> {
+  async addToWhitelist(accountAddress: string) {
     try {
       const addWhiteList = await this.stableCoin.addToWhitelist(accountAddress);
       return await addWhiteList.wait();
@@ -231,9 +175,7 @@ export class Admin {
     }
   }
 
-  async removeFromWhitelist(
-    accountAddress: string
-  ): Promise<TransactionReceipt | null> {
+  async removeFromWhitelist(accountAddress: string) {
     try {
       const removeWhiteList = await this.stableCoin.removeFromWhitelist(
         accountAddress
@@ -248,9 +190,7 @@ export class Admin {
     }
   }
 
-  async addBatchToWhitelist(
-    accountAddresses: string[]
-  ): Promise<TransactionReceipt | null> {
+  async addBatchToWhitelist(accountAddresses: string[]) {
     try {
       const addWhiteList = await this.stableCoin.batchAddToWhitelist(
         accountAddresses
@@ -265,12 +205,7 @@ export class Admin {
     }
   }
 
-  // -------------------------mint/burn stableCoin---------------------------------
-
-  async mintStableCoin(
-    toAddress: string,
-    amount: number
-  ): Promise<TransactionReceipt | null> {
+  async mintStableCoin(toAddress: string, amount: number) {
     try {
       const mint = await this.stableCoin.mint(
         toAddress,
@@ -290,7 +225,7 @@ export class Admin {
     amount: number,
     withdrawerAddress: string,
     reason: string
-  ): Promise<TransactionReceipt | null> {
+  ) {
     try {
       const withdraw = await this.stableCoin.withdraw(
         parseUnits(amount.toString(), 18),
@@ -307,49 +242,7 @@ export class Admin {
     }
   }
 
-  // ------------------------- pause/unpause StableCoin---------------------------------
-
-  async isPausedStableCoin(): Promise<boolean> {
-    try {
-      const paused = await this.stableCoin.paused();
-      return paused;
-    } catch (error) {
-      throw new Error(
-        `Failed to check pause status: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-  }
-
-  async pauseStableCoin(): Promise<TransactionReceipt | null> {
-    try {
-      const pause = await this.stableCoin.pause();
-      return await pause.wait();
-    } catch (error) {
-      throw new Error(
-        `Failed to pause StableCoin: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-  }
-
-  async unpauseStableCoin(): Promise<TransactionReceipt | null> {
-    try {
-      const pause = await this.stableCoin.unpause();
-      return await pause.wait();
-    } catch (error) {
-      throw new Error(
-        `Failed to unpause StableCoin: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-  }
-
-  // -------------------------Mint ERC20Factory---------------------------------
-  async isTokenCreatedByFactory(tokenAddress: string): Promise<boolean> {
+  async isTokenCreatedByFactory(tokenAddress: string) {
     try {
       const isCreated = await this.tokenFactory.isTokenCreatedByFactory(
         tokenAddress
@@ -369,7 +262,7 @@ export class Admin {
     symbol: string,
     tokenOwner: string,
     tokensPerStableCoin: number
-  ): Promise<String> {
+  ) {
     try {
       const create = await this.tokenFactory.createToken(
         name,
@@ -389,7 +282,8 @@ export class Admin {
               data: log.data,
             });
             return parsedLog?.name === "TokenCreated";
-          } catch {
+          } catch (error) {
+            console.error("Error parsing log:", error);
             return false;
           }
         }
@@ -417,14 +311,6 @@ export class Admin {
   }
 
   async mintToken(tokenAddress: string, toAddress: string, amount: number) {
-    // const stableCoinBalance = await this.stableCoin.balanceOf(tokenAddress);
-    // if (stableCoinBalance <= amount) {
-    //   throw new Error(
-    //     `Failed to mint Token: Stable is to low ${stableCoinBalance}`
-    //   );
-    // }
-    // console.log(stableCoinBalance);
-
     try {
       const mint = await this.tokenFactory.mintToken(
         tokenAddress,
@@ -479,8 +365,6 @@ export class Admin {
       );
     }
   }
-
-  // ---------------------------grant/revoke role---------------------
 
   async grantRole(
     contractAddress: string,
@@ -539,7 +423,7 @@ export class Admin {
     role: string,
     accountAddress: string,
     provider: Provider
-  ): Promise<boolean> {
+  ) {
     try {
       const contract = new Contract(contractAddress, ROLE_ADMIN_ABI, provider);
       const roleHash = keccak256(toUtf8Bytes(role));
@@ -547,6 +431,126 @@ export class Admin {
     } catch (error) {
       throw new Error(
         `Failed to Get Role: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async isPausedContract(contractAddress: string) {
+    try {
+      const contract = new Contract(
+        contractAddress,
+        PAUSE_ADMIN_ABI,
+        this.provider
+      );
+      const paused = await contract.paused();
+      return paused;
+    } catch (error) {
+      throw new Error(
+        `Failed to check pause status: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async pauseContract(contractAddress: string) {
+    try {
+      const contract = new Contract(
+        contractAddress,
+        PAUSE_ADMIN_ABI,
+        this.provider
+      );
+      const pause = await contract.pause();
+      return await pause.wait();
+    } catch (error) {
+      throw new Error(
+        `Failed to pause StableCoin: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async unpauseContract(contractAddress: string) {
+    try {
+      const contract = new Contract(
+        contractAddress,
+        PAUSE_ADMIN_ABI,
+        this.provider
+      );
+      const pause = await contract.unpause();
+      return await pause.wait();
+    } catch (error) {
+      throw new Error(
+        `Failed to unpause StableCoin: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async transferStableCoin(toAddress: string, amount: number) {
+    try {
+      const transfer = await this.stableCoin.transfer(
+        toAddress,
+        parseUnits(amount.toString(), 18)
+      );
+      return await transfer.wait();
+    } catch (error) {
+      throw new Error(
+        `Failed to transfer StableCoin: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async setFeePercentage(feePercentage: number) {
+    try {
+      const tx: ContractTransactionResponse =
+        await this.tokenSwap.setFeePercentage(feePercentage);
+      return await tx.wait();
+    } catch (error) {
+      throw new Error(
+        `Failed to set Fee Percentage: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async setFeeCollector(feeCollectorAddress: string) {
+    try {
+      const tx: ContractTransactionResponse =
+        await this.tokenSwap.setFeeCollector(feeCollectorAddress);
+      return await tx.wait();
+    } catch (error) {
+      throw new Error(
+        `Failed to set Fee Collector: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  async emergencyWithdraw(
+    tokenAddress: string,
+    amount: number,
+    toAddress: string
+  ) {
+    try {
+      const tx: ContractTransactionResponse =
+        await this.tokenSwap.emergencyWithdraw(
+          tokenAddress,
+          parseUnits(amount.toString(), 18),
+          toAddress
+        );
+      return await tx.wait();
+    } catch (error) {
+      throw new Error(
+        `Failed to emergency withdraw: ${
           error instanceof Error ? error.message : String(error)
         }`
       );

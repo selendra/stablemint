@@ -18,10 +18,10 @@ const config: HardhatUserConfig = {
         enabled: true,
         runs: 200,
         details: {
-          yul: true, 
+          yul: true,
           yulDetails: {
             stackAllocation: true,
-            optimizerSteps: "dhfoDgvulfnTUtnIf" 
+            optimizerSteps: "dhfoDgvulfnTUtnIf",
           },
         },
       },
@@ -52,7 +52,7 @@ const config: HardhatUserConfig = {
   typechain: {
     outDir: "typechain",
     target: "ethers-v6",
-  }
+  },
 };
 
 export default config;
