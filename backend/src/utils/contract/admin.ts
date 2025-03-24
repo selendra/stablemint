@@ -30,6 +30,7 @@ interface TokenCreatedEvent {
 export class Admin {
   private provider: ethers.JsonRpcProvider;
   private signer: Signer;
+  public address?: string;
   public stableCoin: ethers.Contract;
   public tokenFactory: ethers.Contract;
   public tokenSwap: ethers.Contract;
@@ -116,8 +117,8 @@ export class Admin {
     return parseFloat(formatUnits(amount, 18));
   }
 
-  async getAllCreatedTokens(): Promise<string[]> {
-    return this.tokenFactory.getAllTokenAddresses();
+  async getSignerAddress(): Promise<string> {
+    return this.signer.getAddress();
   }
 
   /**
@@ -336,6 +337,10 @@ export class Admin {
     }
   }
 
+  async getAllCreatedTokens(): Promise<string[]> {
+    return this.tokenFactory.getAllTokenAddresses();
+  }
+
   /**
    * Role Management
    */
@@ -370,11 +375,14 @@ export class Admin {
   async hasRole(
     contractAddress: string,
     role: string,
-    accountAddress: string,
-    provider: Provider
+    accountAddress: string
   ): Promise<boolean> {
     return this.executeViewOperation(async () => {
-      const contract = new Contract(contractAddress, ROLE_ADMIN_ABI, provider);
+      const contract = new Contract(
+        contractAddress,
+        ROLE_ADMIN_ABI,
+        this.provider
+      );
       const roleHash = keccak256(toUtf8Bytes(role));
       return await contract.hasRole(roleHash, accountAddress);
     }, "Failed to Get Role");
