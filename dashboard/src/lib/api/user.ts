@@ -1,21 +1,36 @@
-import { get, post } from "./fetch";
+import { authPath, get, post } from "./fetch";
 import { LogInRespose, User } from "./types";
 
 export async function getMe() {
-	return await get<User>();
+	const user = await get<User>(authPath("/me"));
+
+	if (user.isErr()) {
+		throw user.error;
+	}
+
+	return user.value;
 }
 
-export async function login({
+export async function userLogin({
 	email,
 	password,
 }: {
 	email: string;
 	password: string;
 }) {
-	return await post<LogInRespose>({ email, password });
+	const login = await post<LogInRespose>(authPath("/login"), {
+		email,
+		password,
+	});
+
+	if (login.isErr()) {
+		throw login.error;
+	}
+
+	return login.value;
 }
 
-export async function register({
+export async function userRegister({
 	name,
 	email,
 	password,
@@ -24,5 +39,15 @@ export async function register({
 	email: string;
 	password: string;
 }) {
-	return await post<LogInRespose>({ name, email, password });
+	const register = await post<LogInRespose>(authPath("/register"), {
+		name,
+		email,
+		password,
+	});
+
+	if (register.isErr()) {
+		throw register.error;
+	}
+
+	return register.value;
 }

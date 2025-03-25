@@ -1,13 +1,17 @@
 import { err, ok } from "neverthrow";
 
+const api = `${process.env.NEXT_PUBLIC_API}/api`;
+export const authPath = (path: string) => `${api}/auth/${path}`;
+export const adminPath = (path: string) => `${api}/contract/${path}`;
+
 interface AppError {
-	status: number;
+	error: string;
 	message: string;
 }
 
-export async function post<T>(body: unknown) {
+export async function post<T>(path: string, body: unknown) {
 	try {
-		const response = await fetch("", {
+		const response = await fetch(path, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -17,11 +21,14 @@ export async function post<T>(body: unknown) {
 		});
 
 		if (!response.ok) {
-			throw new Error(`Response status: ${response.status}`);
+			const error = (await response.json()) as AppError;
+			throw error;
 		}
 
 		return ok((await response.json()) as T);
 	} catch (e) {
+		console.log("fucking e", e);
+
 		const error = e as Error;
 		const status =
 			typeof e === "object" && e !== null && "status" in e
@@ -31,15 +38,15 @@ export async function post<T>(body: unknown) {
 		const message = error.message || "Unknown error";
 
 		return err({
-			status,
+			error: status,
 			message,
 		} as AppError);
 	}
 }
 
-export async function get<T>() {
+export async function get<T>(path: string) {
 	try {
-		const response = await fetch("", {
+		const response = await fetch(path, {
 			method: "GET",
 			headers: {
 				"Content-Type": "application/json",
@@ -48,7 +55,8 @@ export async function get<T>() {
 		});
 
 		if (!response.ok) {
-			throw new Error(`Response status: ${response.status}`);
+			const error = (await response.json()) as AppError;
+			throw error;
 		}
 
 		return ok((await response.json()) as T);
@@ -62,7 +70,7 @@ export async function get<T>() {
 		const message = error.message || "Unknown error";
 
 		return err({
-			status,
+			error: status,
 			message,
 		} as AppError);
 	}
