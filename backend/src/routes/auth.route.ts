@@ -30,5 +30,6 @@ router.post(
 
 // Get current user (protected route)
 router.get("/me", authMiddleware, authController.getCurrentUser);
+router.get("/user/:userId", authMiddleware, authController.getUserById);
 
 export default router;

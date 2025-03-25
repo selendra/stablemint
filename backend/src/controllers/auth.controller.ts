@@ -116,6 +116,24 @@ export const getCurrentUser = async (req: Request, res: Response) => {
 };
 
 // Get current user
+export const getUserById = async (req: Request, res: Response) => {
+	try {
+		// req.user is set by auth middleware
+		const user = await User.findById(req.params.userId)
+			.select("-password")
+			.select("-privateKey");
+		if (!user) {
+			return res.status(404).json({ message: "User not found" });
+		}
+
+		res.json(user);
+	} catch (error) {
+		console.error("Get current user error:", error);
+		res.status(500).json({ message: "Server error" });
+	}
+};
+
+// Get current user
 export const getAllUsers = async (req: Request, res: Response) => {
 	try {
 		// req.user is set by auth middleware
