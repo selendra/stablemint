@@ -94,7 +94,7 @@ export async function requestToken(req: Request, res: Response) {
 		// @ts-ignore
 		const user: DecodedToken = req?.user;
 
-		const { name, symbol, owner_id, stable_coin_amount, ratio } = req.body;
+		const { name, symbol, stable_coin_amount, ratio } = req.body;
 		const existing = await Token.find({
 			$or: [{ name: name }, { symbol: symbol }],
 		});

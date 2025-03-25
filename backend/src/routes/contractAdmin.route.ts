@@ -7,6 +7,7 @@ import * as authController from "../controllers/auth.controller";
 import User from "../models/user.model";
 import { ethers } from "ethers";
 import { getAuth, isAdmin } from "../utils/isAdmin";
+import Token from "../models/token.model";
 
 // Initialize router
 const router = express.Router();
@@ -253,6 +254,12 @@ tokenFactoryRouter.post(
 				tokenOwner,
 				Number(tokensPerStableCoin)
 			);
+
+			await Token.findOneAndUpdate(
+				{ _id: req.body.token_id },
+				{ status: "CREATED", token_address: tokenAddress }
+			);
+
 			res.json({ success: true, tokenAddress });
 		} catch (error) {
 			res.status(500).json({

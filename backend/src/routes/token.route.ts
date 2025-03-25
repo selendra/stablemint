@@ -23,6 +23,7 @@ router.post(
 	],
 	loyaltyController.requestToken
 );
+
 router.post(
 	"/reject",
 	[
