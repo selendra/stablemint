@@ -7,7 +7,8 @@ export interface IUser extends Document {
 	email: string;
 	password: string;
 	address: string;
-	privateKey: String;
+	privateKey: string;
+	role: string;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -42,6 +43,11 @@ const userSchema = new Schema<IUser>(
 		privateKey: {
 			type: String,
 			required: [true, "Private key is required"],
+		},
+		role: {
+			type: String,
+			default: "USER",
+			enum: ["USER", "ADMIN"],
 		},
 	},
 	{

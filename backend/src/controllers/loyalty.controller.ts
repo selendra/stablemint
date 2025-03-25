@@ -6,6 +6,8 @@ import Token from "../models/token.model";
 import { comparePassword } from "../utils/password";
 import config from "../config";
 import { ethers } from "ethers";
+import { DecodedToken } from "../middleware/auth.middleware";
+import { getAuth, isAdmin } from "../utils/isAdmin";
 
 export async function getAllTokens(req: Request, res: Response) {
 	try {
@@ -63,10 +65,46 @@ export async function getTokensByOwnerId(req: Request, res: Response) {
 
 export async function rejectToken(req: Request, res: Response) {
 	try {
+		// @ts-ignore
+		const auth = getAuth(req);
+		await isAdmin(auth.userId);
+
 		return await Token.findOneAndUpdate(
-			{ _id: req.body.owner_id },
+			{ _id: req.body.token_id },
 			{ status: "REJECTED" }
 		);
+	} catch (error) {
+		console.error("getAllTokens error:", error);
+		res.status(500).json({ message: "Server error" });
+	}
+}
+
+export async function requestToken(req: Request, res: Response) {
+	try {
+		// @ts-ignore
+		const user: DecodedToken = req?.user;
+
+		const { name, symbol, owner_id, stable_coin_amount, ratio } = req.body;
+		const existing = await Token.find({
+			$or: [{ name: name }, { symbol: symbol }],
+		});
+
+		if (existing.length > 0) {
+			return res
+				.status(400)
+				.json({ message: "Token name or symbol is not available." });
+		}
+
+		return await new Token({
+			name,
+			symbol,
+			stable_coin_amount,
+			ratio,
+			owner_id: user.userId,
+			status: "PENDING",
+			token_address: null,
+			rejected_reason: null,
+		}).save();
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
