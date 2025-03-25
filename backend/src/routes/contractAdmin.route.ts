@@ -542,6 +542,23 @@ userRouter.post(
 	}
 );
 
+userRouter.get(
+	"/sel/:address",
+	validate,
+	async (req: Request, res: Response) => {
+		try {
+			getAuth(req);
+			const balance = await adminContract.getSel(req.params.address);
+			res.json({ balance });
+		} catch (error) {
+			res.status(500).json({
+				message: "Failed to Transfer Native Token",
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+);
+
 userRouter.get("/", authMiddleware, authController.getAllUsers);
 
 // Register all routers
