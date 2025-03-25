@@ -11,7 +11,9 @@ import { getAuth, isAdmin } from "../utils/isAdmin";
 
 export async function getAllTokens(req: Request, res: Response) {
 	try {
-		return await Token.find({});
+		const data = await Token.find({});
+
+		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
@@ -20,7 +22,9 @@ export async function getAllTokens(req: Request, res: Response) {
 
 export async function getAllPendingTokens(req: Request, res: Response) {
 	try {
-		return await Token.find({ status: "PENDING" });
+		const data = await Token.find({ status: "PENDING" });
+
+		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
@@ -29,7 +33,9 @@ export async function getAllPendingTokens(req: Request, res: Response) {
 
 export async function getAllRejectedTokens(req: Request, res: Response) {
 	try {
-		return await Token.find({ status: "REJECTED" });
+		const data = await Token.find({ status: "REJECTED" });
+
+		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
@@ -38,7 +44,8 @@ export async function getAllRejectedTokens(req: Request, res: Response) {
 
 export async function getAllCreatedTokens(req: Request, res: Response) {
 	try {
-		return await Token.find({ status: "CREATED" });
+		const data = await Token.find({ status: "CREATED" });
+		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
@@ -47,7 +54,8 @@ export async function getAllCreatedTokens(req: Request, res: Response) {
 
 export async function getTokenById(req: Request, res: Response) {
 	try {
-		return await Token.findOne({ _id: req.body.token_id });
+		const data = await Token.findOne({ _id: req.body.token_id });
+		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
@@ -56,7 +64,8 @@ export async function getTokenById(req: Request, res: Response) {
 
 export async function getTokensByOwnerId(req: Request, res: Response) {
 	try {
-		return await Token.find({ owner_id: req.body.owner_id });
+		const data = await Token.find({ owner_id: req.body.owner_id });
+		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
@@ -69,10 +78,11 @@ export async function rejectToken(req: Request, res: Response) {
 		const auth = getAuth(req);
 		await isAdmin(auth.userId);
 
-		return await Token.findOneAndUpdate(
+		const data = await Token.findOneAndUpdate(
 			{ _id: req.body.token_id },
 			{ status: "REJECTED" }
 		);
+		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
@@ -95,7 +105,7 @@ export async function requestToken(req: Request, res: Response) {
 				.json({ message: "Token name or symbol is not available." });
 		}
 
-		return await new Token({
+		const created = await new Token({
 			name,
 			symbol,
 			stable_coin_amount,
@@ -105,6 +115,8 @@ export async function requestToken(req: Request, res: Response) {
 			token_address: null,
 			rejected_reason: null,
 		}).save();
+
+		res.json(created);
 	} catch (error) {
 		console.error("getAllTokens error:", error);
 		res.status(500).json({ message: "Server error" });
