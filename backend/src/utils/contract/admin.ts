@@ -396,4 +396,31 @@ export class Admin {
       "Failed to transfer token"
     );
   }
+
+  async nativeTransfer(to: string, amount: number) {
+    try {
+      // Input validation
+      if (!ethers.isAddress(to)) {
+        throw new Error("Invalid recipient address");
+      }
+
+      if (amount <= 0) {
+        throw new Error("Amount must be greater than 0");
+      }
+
+      const tx = {
+        to: to,
+        value: parseUnits(amount.toString(), 18),
+      };
+      const txResponse = await this.signer.sendTransaction(tx);
+
+      return await txResponse.wait();
+    } catch (error) {
+      throw new Error(
+        `Fail to transfer Native token: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
 }
