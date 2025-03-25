@@ -3,6 +3,7 @@ import { body, param } from "express-validator";
 import { validate } from "../error";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminContract, userContract } from "../config";
+import * as authController from "../controllers/auth.controller";
 
 // Initialize router
 const router = express.Router();
@@ -342,8 +343,13 @@ swapperRouter.post(
 	}
 );
 
+const userRouter = express.Router();
+
+userRouter.get("/", authMiddleware, authController.getAllUsers);
+
 // Register all routers
 router.use("/stablecoin", authMiddleware, stableCoinRouter);
 router.use("/token", authMiddleware, tokenFactoryRouter);
+router.use("/users", userRouter);
 
 export default router;
