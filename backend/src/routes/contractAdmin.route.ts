@@ -228,12 +228,6 @@ tokenFactoryRouter.post(
   [
     body("name").isString().withMessage("Token name is required"),
     body("symbol").isString().withMessage("Token symbol is required"),
-    body("stableCoinAddress")
-      .isString()
-      .withMessage("stableCoinAddress address is required"),
-    body("swapperAddress")
-      .isString()
-      .withMessage("swapperAddress address is required"),
     body("tokenOwner")
       .isString()
       .withMessage("Token owner address is required"),

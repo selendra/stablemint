@@ -141,8 +141,10 @@ export class Admin {
 
   async checkTokenTotalSupply(tokenAddress: string): Promise<number> {
     return this.executeViewOperation(async () => {
-      const token = this.getContract(tokenAddress, ERC20FactoryABI);
-      const supply = await token.totalSupply();
+      const supply = await this.getContract(
+        tokenAddress,
+        ERC20TokenABI
+      ).totalSupply();
       return this.formatTokenAmount(supply);
     }, "Failed to check token total supply");
   }
@@ -299,9 +301,13 @@ export class Admin {
     tokensPerStableCoin: number
   ): Promise<string> {
     try {
+      const stableCoinAddress = await this.stableCoin.getAddress();
+      const swapperAddress = await this.tokenSwap.getAddress();
       const tx = await this.tokenFactory.createToken(
         name,
         symbol,
+        stableCoinAddress,
+        swapperAddress,
         tokenOwner,
         tokensPerStableCoin
       );
