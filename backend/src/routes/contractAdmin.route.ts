@@ -232,6 +232,7 @@ const tokenFactoryRouter = express.Router();
 tokenFactoryRouter.post(
 	"/create",
 	[
+		body("token_id").isString().withMessage("token_id is required"),
 		body("name").isString().withMessage("Token name is required"),
 		body("symbol").isString().withMessage("Token symbol is required"),
 		body("tokenOwner")
@@ -247,7 +248,8 @@ tokenFactoryRouter.post(
 			const auth = getAuth(req);
 			await isAdmin(auth.userId);
 
-			const { name, symbol, tokenOwner, tokensPerStableCoin } = req.body;
+			const { name, symbol, tokenOwner, tokensPerStableCoin, token_id } =
+				req.body;
 			const tokenAddress = await adminContract.createToken(
 				name,
 				symbol,
@@ -256,7 +258,7 @@ tokenFactoryRouter.post(
 			);
 
 			await Token.findOneAndUpdate(
-				{ _id: req.body.token_id },
+				{ _id: token_id },
 				{ status: "CREATED", token_address: tokenAddress }
 			);
 
