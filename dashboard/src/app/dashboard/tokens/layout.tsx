@@ -13,12 +13,6 @@ export default function TokenLayout({ children }: { children: ReactNode }) {
 					className="p-2 px-6 w-min cursor-pointer"
 					value="/dashboard/tokens"
 				>
-					All
-				</TabsTrigger>
-				<TabsTrigger
-					className="p-2 px-6 w-min cursor-pointer"
-					value="/dashboard/tokens/created"
-				>
 					Created
 				</TabsTrigger>
 				<TabsTrigger

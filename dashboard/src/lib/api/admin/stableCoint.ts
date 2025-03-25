@@ -9,7 +9,7 @@ import {
 
 export async function getStableCoinBalance({ address }: { address: string }) {
 	const request = await get<BalanceResponse>(
-		adminPath(`/stablecoin/balance/${address}`)
+		adminPath(`stablecoin/balance/${address}`)
 	);
 
 	if (request.isErr()) {
@@ -21,7 +21,7 @@ export async function getStableCoinBalance({ address }: { address: string }) {
 
 export async function getStableCoinTotalSupply() {
 	const request = await get<TotalSupplyResponse>(
-		adminPath(`/stablecoin/total-supply`)
+		adminPath(`stablecoin/total-supply`)
 	);
 
 	if (request.isErr()) {
@@ -36,7 +36,7 @@ export async function minStableCoin(body: {
 	toAddress: string;
 }) {
 	const request = await post<WithdrawResponse>(
-		adminPath(`/stablecoin/mint`),
+		adminPath(`stablecoin/mint`),
 		body
 	);
 
@@ -53,7 +53,20 @@ export async function withdrawMoney(body: {
 	reason: string;
 }) {
 	const request = await post<WithdrawResponse>(
-		adminPath(`/stablecoin/withdraw`),
+		adminPath(`stablecoin/withdraw`),
+		body
+	);
+
+	if (request.isErr()) {
+		throw request.error;
+	}
+
+	return request.value;
+}
+
+export async function transferKhr(body: { amount: number; addresses: string }) {
+	const request = await post<WithdrawResponse>(
+		adminPath(`stablecoin/transfer`),
 		body
 	);
 

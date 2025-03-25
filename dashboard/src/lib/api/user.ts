@@ -51,3 +51,13 @@ export async function userRegister({
 
 	return register.value;
 }
+
+export async function getUserById({ userId }: { userId: string }) {
+	const register = await get<User>(authPath(`user/${userId}`));
+
+	if (register.isErr()) {
+		throw register.error;
+	}
+
+	return register.value;
+}

@@ -15,26 +15,26 @@ import React from "react";
 
 export default function EachUser({ user }: { user: User }) {
 	const { data: balance } = useQuery({
-		queryKey: ["stableCoinBalance", user.id],
+		queryKey: ["stableCoinBalance", user._id],
 		queryFn: () => {
 			return getStableCoinBalance({ address: user.address! });
 		},
 	});
 
 	const { data: accountStatus, refetch } = useQuery({
-		queryKey: ["accountWhiteList", user.id],
+		queryKey: ["accountWhiteList", user._id],
 		queryFn: () => {
 			return getAccountWhitelistStatus({ address: user.address! });
 		},
 	});
 
 	const addWhitelist = useMutation({
-		mutationKey: ["addWhiteList", user.id],
+		mutationKey: ["addWhiteList", user._id],
 		mutationFn: addWhiteList,
 	});
 
 	const removeWhitelist = useMutation({
-		mutationKey: ["removeWhiteList", user.id],
+		mutationKey: ["removeWhiteList", user._id],
 		mutationFn: removeWhiteList,
 	});
 

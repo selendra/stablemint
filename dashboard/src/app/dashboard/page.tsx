@@ -7,7 +7,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { getAllLoyaltyTokens } from "@/lib/api/admin/token";
+import { getCreatedTokens } from "@/lib/api/token";
 
 export default function Page() {
 	const { data: totalSupply } = useQuery({
@@ -15,9 +15,9 @@ export default function Page() {
 		queryFn: getStableCoinTotalSupply,
 	});
 
-	const { data: tokens } = useQuery({
-		queryKey: ["tokens"],
-		queryFn: getAllLoyaltyTokens,
+	const { data } = useQuery({
+		queryKey: ["createdTokens"],
+		queryFn: getCreatedTokens,
 	});
 
 	return (
@@ -54,7 +54,7 @@ export default function Page() {
 								{new Intl.NumberFormat("en-GB", {
 									style: "decimal",
 									currency: "KHR",
-								}).format(tokens?.tokens.length ?? 0)}
+								}).format(data?.length ?? 0)}
 							</span>
 						</button>
 					</div>
