@@ -6,7 +6,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
-export default function EachToken({ token }: { token: string }) {
+export default function EachRequestedToken({ token }: { token: string }) {
 	const { data: supply } = useQuery({
 		queryKey: ["totalSpply", token],
 		queryFn: () => getLoyaltyTokenSupply({ tokenAddress: token }),
@@ -16,6 +16,7 @@ export default function EachToken({ token }: { token: string }) {
 		queryKey: ["tokenInfo", token],
 		queryFn: () => getLoyaltyTokenInfo({ tokenAddress: token }),
 	});
+
 	return (
 		<TableRow>
 			<TableCell className="font-mono font-normal">

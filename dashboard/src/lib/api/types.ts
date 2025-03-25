@@ -11,7 +11,7 @@ export interface LogInRespose {
 	user: User;
 }
 
-export interface BalanceRespose {
+export interface BalanceResponse {
 	balance: number;
 }
 
@@ -42,4 +42,10 @@ export interface WithdrawResponse {
 
 export interface TotalSupplyResponse {
 	totalSupply: number;
+}
+
+export interface TokenInfo {
+	id: string;
+	name: string;
+	symbol: string;
 }

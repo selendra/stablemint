@@ -1,27 +1,26 @@
 "use client";
-
-import React from "react";
 import {
-	Table,
-	TableBody,
 	TableCaption,
-	TableHead,
 	TableHeader,
 	TableRow,
+	TableHead,
+	TableBody,
+	Table,
 } from "@/components/ui/table";
-import { useQuery } from "@tanstack/react-query";
 import { getAllLoyaltyTokens } from "@/lib/api/admin/token";
-import EachToken from "./components/EachToken";
+import { useQuery } from "@tanstack/react-query";
+
+import React from "react";
+import EachRejectedToken from "../rejected/components/EachRejectedToken";
 import { TabsContent } from "@/components/ui/tabs";
 
-export default function Tokens() {
+export default function CreatedTokens() {
 	const { data } = useQuery({
-		queryKey: ["tokens"],
+		queryKey: ["createdTokens"],
 		queryFn: getAllLoyaltyTokens,
 	});
-
 	return (
-		<TabsContent value="/dashboard/tokens">
+		<TabsContent value="/dashboard/tokens/created">
 			<Table>
 				<TableCaption>A list of your recent invoices.</TableCaption>
 				<TableHeader>
@@ -34,7 +33,7 @@ export default function Tokens() {
 				</TableHeader>
 				<TableBody>
 					{data?.tokens.map((token) => (
-						<EachToken key={token} token={token} />
+						<EachRejectedToken key={token} token={token} />
 					))}
 				</TableBody>
 			</Table>

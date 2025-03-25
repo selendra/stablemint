@@ -1,5 +1,10 @@
 import { adminPath, get, post } from "../fetch";
-import { AllTokensResponse, BalanceRespose, MintResponse } from "../types";
+import {
+	AllTokensResponse,
+	BalanceResponse,
+	MintResponse,
+	TokenInfo,
+} from "../types";
 
 export async function createLoyaltyToken(body: {
 	name: string;
@@ -37,7 +42,7 @@ export async function getLoyaltyTokenBalance({
 	tokenAddress: string;
 	accountAddress: string;
 }) {
-	const request = await get<BalanceRespose>(
+	const request = await get<BalanceResponse>(
 		adminPath(`/token/balance/${tokenAddress}/${accountAddress}`)
 	);
 	if (request.isErr()) {
@@ -49,6 +54,36 @@ export async function getLoyaltyTokenBalance({
 
 export async function getAllLoyaltyTokens() {
 	const request = await get<AllTokensResponse>(adminPath(`/token/all`));
+	if (request.isErr()) {
+		throw request.error;
+	}
+
+	return request.value;
+}
+
+export async function getLoyaltyTokenSupply({
+	tokenAddress,
+}: {
+	tokenAddress: string;
+}) {
+	const request = await get<BalanceResponse>(
+		adminPath(`/token/supply/${tokenAddress}`)
+	);
+	if (request.isErr()) {
+		throw request.error;
+	}
+
+	return request.value;
+}
+
+export async function getLoyaltyTokenInfo({
+	tokenAddress,
+}: {
+	tokenAddress: string;
+}) {
+	const request = await get<TokenInfo>(
+		adminPath(`/token/info/${tokenAddress}`)
+	);
 	if (request.isErr()) {
 		throw request.error;
 	}

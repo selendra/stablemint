@@ -1,14 +1,14 @@
 import { adminPath, get, post } from "../fetch";
 import {
 	AccountWhiteListStatusResponse,
-	BalanceRespose,
+	BalanceResponse,
 	TotalSupplyResponse,
 	WhiteListResponse,
 	WithdrawResponse,
 } from "../types";
 
 export async function getStableCoinBalance({ address }: { address: string }) {
-	const request = await get<BalanceRespose>(
+	const request = await get<BalanceResponse>(
 		adminPath(`/stablecoin/balance/${address}`)
 	);
 
