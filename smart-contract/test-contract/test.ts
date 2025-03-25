@@ -167,10 +167,7 @@ async function main(
     `Initial wallet balance: ${ethers.formatEther(initialBalance)} SEL`
   );
 
-  const contracts: Contracts = await getContracts(
-    wallet,
-    "0x1400db984B4d924142d203D04Ca33AD838985cCe"
-  );
+  const contracts: Contracts = await getContracts(wallet);
 
   if (isSetupContracts) {
     try {
@@ -198,7 +195,7 @@ async function main(
 }
 
 // Run the main function
-main(true, false, false)
+main(false, false, false)
   .then(() => process.exit(0))
   .catch((error) => {
     console.error(error);

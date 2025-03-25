@@ -179,8 +179,8 @@ stableCoinRouter.get(
 stableCoinRouter.post(
   "/transfer",
   [
-    body("private_key").isArray().withMessage("Addresses must be an array"),
-    body("addresses").isArray().withMessage("Addresses must be an array"),
+    body("private_key").isString().withMessage("Addresses must be an array"),
+    body("addresses").isString().withMessage("Addresses must be an array"),
     body("amount").isNumeric().withMessage("Amount must be a number"),
     validate,
   ],

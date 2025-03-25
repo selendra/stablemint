@@ -133,7 +133,7 @@ export class Admin {
     accountAddress: string
   ): Promise<number> {
     return this.executeViewOperation(async () => {
-      const token = this.getContract(tokenAddress, ERC20FactoryABI);
+      const token = this.getContract(tokenAddress, ERC20TokenABI);
       const balance = await token.balanceOf(accountAddress);
       return this.formatTokenAmount(balance);
     }, "Failed to check token balance");
