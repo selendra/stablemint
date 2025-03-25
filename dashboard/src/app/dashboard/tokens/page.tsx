@@ -1,41 +1,41 @@
 "use client";
-
-import React from "react";
 import {
-	Table,
-	TableBody,
-	TableHead,
 	TableHeader,
 	TableRow,
+	TableHead,
+	TableBody,
+	Table,
 } from "@/components/ui/table";
 import { useQuery } from "@tanstack/react-query";
-import { getAllLoyaltyTokens } from "@/lib/api/admin/token";
-import EachToken from "./components/EachToken";
-import { TabsContent } from "@/components/ui/tabs";
 
-export default function Tokens() {
+import React from "react";
+import { getCreatedTokens } from "@/lib/api/token";
+import EachCreatedToken from "./components/EachCreatedToken";
+
+export default function CreatedTokens() {
 	const { data } = useQuery({
-		queryKey: ["tokens"],
-		queryFn: getAllLoyaltyTokens,
+		queryKey: ["createdTokens"],
+		queryFn: getCreatedTokens,
 	});
-
 	return (
-		<TabsContent value="/dashboard/tokens">
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Name</TableHead>
-						<TableHead>Symbol</TableHead>
-						<TableHead>Address</TableHead>
-						<TableHead>Supply</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{data?.tokens.map((token) => (
-						<EachToken key={token} token={token} />
-					))}
-				</TableBody>
-			</Table>
-		</TabsContent>
+		<Table>
+			<TableHeader>
+				<TableRow>
+					<TableHead>Name</TableHead>
+					<TableHead>Symbol</TableHead>
+					<TableHead>Address</TableHead>
+					<TableHead>KHR Collateral</TableHead>
+					<TableHead>Pegged Ratio</TableHead>
+					<TableHead>Total Supply</TableHead>
+					<TableHead>Status</TableHead>
+					<TableHead></TableHead>
+				</TableRow>
+			</TableHeader>
+			<TableBody>
+				{data?.map((token) => (
+					<EachCreatedToken key={token._id} token={token} />
+				))}
+			</TableBody>
+		</Table>
 	);
 }

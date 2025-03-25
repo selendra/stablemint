@@ -9,13 +9,13 @@ import {
 import { Input } from "@/components/ui/input";
 import React from "react";
 import EachToken from "./components/EachToken";
-import { getAllLoyaltyTokens } from "@/lib/api/admin/token";
 import { useQuery } from "@tanstack/react-query";
+import { getCreatedTokens } from "@/lib/api/token";
 
 export default function Exchange() {
 	const { data } = useQuery({
-		queryKey: ["tokens"],
-		queryFn: getAllLoyaltyTokens,
+		queryKey: ["createdTokens"],
+		queryFn: getCreatedTokens,
 	});
 
 	return (
@@ -29,13 +29,13 @@ export default function Exchange() {
 						<TableRow>
 							<TableHead>Token</TableHead>
 							<TableHead>Price</TableHead>
-							<TableHead>Volume</TableHead>
-							<TableHead>Actions</TableHead>
+							<TableHead>Total Supply</TableHead>
+							<TableHead>Market Cap</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
-						{data?.tokens.map((token) => (
-							<EachToken key={token} token={token} />
+						{data?.map((token) => (
+							<EachToken key={token._id} token={token} />
 						))}
 					</TableBody>
 				</Table>

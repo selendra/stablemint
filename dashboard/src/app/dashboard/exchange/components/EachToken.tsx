@@ -1,41 +1,43 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { TableCell, TableRow } from "@/components/ui/table";
-import {
-	getLoyaltyTokenInfo,
-	getLoyaltyTokenSupply,
-} from "@/lib/api/admin/token";
-import { useQuery } from "@tanstack/react-query";
+
+import { Token } from "@/lib/api/token";
 import React from "react";
 
-export default function EachToken({ token }: { token: string }) {
-	const { data: supply } = useQuery({
-		queryKey: ["totalSpply", token],
-		queryFn: () => getLoyaltyTokenSupply({ tokenAddress: token }),
-	});
-
-	const { data: info } = useQuery({
-		queryKey: ["tokenInfo", token],
-		queryFn: () => getLoyaltyTokenInfo({ tokenAddress: token }),
-	});
+export default function EachToken({ token }: { token: Token }) {
 	return (
 		<TableRow>
-			<TableCell className="font-mono font-normal">
+			<TableCell className="">
 				<div className="flex gap-2 place-items-center">
 					<Avatar>
-						<AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-						<AvatarFallback>CN</AvatarFallback>
+						<AvatarFallback>{token.symbol}</AvatarFallback>
 					</Avatar>
 					<div>
-						<h2>{info?.name ?? "Unknown"}</h2>
-						<p>{info?.symbol ?? "Unknown"}</p>
+						<h2>{token.name}</h2>
+						<p className="text-xs">{token.token_address}</p>
 					</div>
 				</div>
 			</TableCell>
-			<TableCell className="font-mono font-normal">
-				{supply?.balance ?? 0}
+			<TableCell className="">
+				{new Intl.NumberFormat("en-GB", {
+					style: "currency",
+					currency: "KHR",
+					maximumFractionDigits: 8,
+				}).format(token.ratio / token.stable_coin_amount)}
 			</TableCell>
-			<TableCell className="font-mono font-normal"></TableCell>
-			<TableCell></TableCell>
+			<TableCell className="">
+				{new Intl.NumberFormat("en-GB", {
+					style: "currency",
+					currency: token.symbol,
+				}).format(token.stable_coin_amount * token.ratio)}
+			</TableCell>
+			<TableCell>
+				{new Intl.NumberFormat("en-GB", {
+					style: "currency",
+					currency: "KHR",
+					maximumFractionDigits: 8,
+				}).format(token.stable_coin_amount)}
+			</TableCell>
 		</TableRow>
 	);
 }

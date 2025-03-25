@@ -3,6 +3,7 @@ import { err, ok } from "neverthrow";
 const api = `${process.env.NEXT_PUBLIC_API}/api`;
 export const authPath = (path: string) => `${api}/auth/${path}`;
 export const adminPath = (path: string) => `${api}/contract/${path}`;
+export const tokenPath = (path: string) => `${api}/tokens/${path}`;
 
 interface AppError {
 	error: string;
@@ -27,8 +28,6 @@ export async function post<T>(path: string, body: unknown) {
 
 		return ok((await response.json()) as T);
 	} catch (e) {
-		console.log("fucking e", e);
-
 		const error = e as Error;
 		const status =
 			typeof e === "object" && e !== null && "status" in e
