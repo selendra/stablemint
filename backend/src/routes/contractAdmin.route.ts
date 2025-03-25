@@ -348,25 +348,25 @@ tokenFactoryRouter.get(
 tokenFactoryRouter.post(
   "/transfer",
   [
-    body("private_key").isArray().withMessage("Addresses must be an array"),
-    body("tokenAddress").isArray().withMessage("Addresses must be an array"),
-    body("addresses").isArray().withMessage("Addresses must be an array"),
+    body("private_key").isString().withMessage("Private key must be an string"),
+    body("tokenAddress").isString().withMessage("Addresses must be an string"),
+    body("toAddress").isString().withMessage("Addresses must be an string"),
     body("amount").isNumeric().withMessage("Amount must be a number"),
     validate,
   ],
   async (req: Request, res: Response) => {
     try {
-      const { tokenAddress, addresses, amount } = req.body;
+      const { tokenAddress, toAddress, amount } = req.body;
 
       const result = await userContract(req.body.private_key).tokenTransfer(
         tokenAddress,
-        addresses,
+        toAddress,
         Number(amount)
       );
       res.json({ success: true, result });
     } catch (error) {
       res.status(500).json({
-        message: "Failed to add batch to whitelist",
+        message: "Failed to Transfer Token",
         error: error instanceof Error ? error.message : String(error),
       });
     }

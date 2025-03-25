@@ -403,8 +403,6 @@ export class Admin {
 
   async tokenTransfer(tokenAddress: string, to: string, amount: number) {
     const token = this.getContract(tokenAddress, ERC20TokenABI, true);
-    const tx = await token.transfer(to, parseUnits(amount.toString(), 18));
-    await tx.wait();
 
     return this.executeTransaction(
       () => token.transfer(to, parseUnits(amount.toString(), 18)),
