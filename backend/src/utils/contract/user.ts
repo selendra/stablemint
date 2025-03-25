@@ -27,7 +27,7 @@ export type ConnectWalletResult = {
 
 export class User {
   private signer?: Signer;
-  private address?: string;
+  public address?: string;
   private provider: Provider;
   private contractCache: Map<string, Contract> = new Map();
   public readonly stableCoinAddress: string;

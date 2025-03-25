@@ -1,0 +1,8 @@
+1-  stable-coin -> /mint
+2-  stable-coin -> /whitelist/add  / whitelist/remove
+ 2.1 stable-coin -> /whitelist/:address  // check whitelist
+3 - tokenFactory -> /create  // create tokenFactory
+    3.1 tokenFactory -> /is-created/:address"
+4 - tokenFactory -> /mint
+
+--------------------------------------------------
