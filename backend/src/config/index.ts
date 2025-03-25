@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { Admin } from "../utils/contract";
+import { Admin } from "../utils/contract/admin";
 
 dotenv.config();
 
@@ -30,3 +30,15 @@ export const adminContract = new Admin(
     "0x376e34036b77704B7558Dc3aB045dDA812EEd76e",
   process.env.SWAP_ADDRESS || "0x969e50aeB7D4Fa170aF1ff5a5FD692ef5A75E189"
 );
+
+// Initialize User instance from environment variables
+export const userContract = (private_key: string) =>
+  new Admin(
+    process.env.RPC_URL || "http://localhost:9944",
+    private_key,
+    process.env.STABLE_COIN_ADDRESS ||
+      "0xffFEdB07dbc5A93A3c7653930e46Bd9332468559",
+    process.env.TOKEN_FACTORY_ADDRESS ||
+      "0x376e34036b77704B7558Dc3aB045dDA812EEd76e",
+    process.env.SWAP_ADDRESS || "0x969e50aeB7D4Fa170aF1ff5a5FD692ef5A75E189"
+  );

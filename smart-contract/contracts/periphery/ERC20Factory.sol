@@ -66,6 +66,8 @@ contract ERC20Factory is AccessControl, ReentrancyGuard {
     function createToken(
         string memory name,
         string memory symbol,
+        address stableCoinAddress,
+        address swapperAddress,
         address tokenOwner,
         uint256 tokensPerStableCoin
     ) external onlyRole(TOKEN_CREATOR_ROLE) nonReentrant returns (address) {
@@ -79,9 +81,15 @@ contract ERC20Factory is AccessControl, ReentrancyGuard {
 
         // Create token with try/catch to better handle errors
         ERC20Token newToken;
-        try new ERC20Token(name, symbol, tokenOwner) returns (
-            ERC20Token _token
-        ) {
+        try
+            new ERC20Token(
+                name,
+                symbol,
+                tokenOwner,
+                stableCoinAddress,
+                swapperAddress
+            )
+        returns (ERC20Token _token) {
             newToken = _token;
         } catch Error(string memory reason) {
             revert(

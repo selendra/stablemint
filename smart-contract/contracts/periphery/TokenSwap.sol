@@ -8,66 +8,46 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 import "../interfaces/IStableCoin.sol";
 import "../interfaces/IERC20Factory.sol";
 
-contract TokenSwap is AccessControl, ReentrancyGuard, Pausable {
+contract TokenSwap is AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeERC20 for IStableCoin;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER_ROLE");
 
     IStableCoin public stableCoin;
     IERC20Factory public tokenFactory;
-    
-    uint256 public feePercentage; // In basis points (1/100 of a percent, e.g., 25 = 0.25%)
-    address public feeCollector;
-    
-    uint256 public constant MAX_FEE = 500; // 5% maximum fee
-    uint256 public constant BASIS_POINTS = 10000; // 100% in basis points
 
     event StableCoinToToken(
-        address indexed user, 
-        address indexed token, 
-        uint256 stableCoinAmount, 
-        uint256 tokenAmount,
-        uint256 feeAmount
-    );
-    
-    event TokenToStableCoin(
-        address indexed user, 
-        address indexed token, 
-        uint256 tokenAmount, 
+        address indexed user,
+        address indexed token,
         uint256 stableCoinAmount,
-        uint256 feeAmount
+        uint256 tokenAmount
     );
-    
-    event FeeUpdated(uint256 newFeePercentage);
-    event FeeCollectorUpdated(address newFeeCollector);
 
-    constructor(
-        address _stableCoin,
-        address _tokenFactory,
-        address _admin,
-        address _feeCollector,
-        uint256 _initialFeePercentage
-    ) {
+    event TokenToStableCoin(
+        address indexed user,
+        address indexed token,
+        uint256 tokenAmount,
+        uint256 stableCoinAmount
+    );
+
+    constructor(address _stableCoin, address _tokenFactory, address _admin) {
         require(_stableCoin != address(0), "StableCoin cannot be zero address");
-        require(_tokenFactory != address(0), "TokenFactory cannot be zero address");
+        require(
+            _tokenFactory != address(0),
+            "TokenFactory cannot be zero address"
+        );
         require(_admin != address(0), "Admin cannot be zero address");
-        require(_feeCollector != address(0), "Fee collector cannot be zero address");
-        require(_initialFeePercentage <= MAX_FEE, "Fee too high");
-        
+
         stableCoin = IStableCoin(_stableCoin);
         tokenFactory = IERC20Factory(_tokenFactory);
-        feeCollector = _feeCollector;
-        feePercentage = _initialFeePercentage;
-        
+
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
         _grantRole(PAUSER_ROLE, _admin);
-        _grantRole(FEE_MANAGER_ROLE, _admin);
     }
-    
+
     /**
      * @dev Swap StableCoin for Token
      * @param token The token address to receive
@@ -76,46 +56,48 @@ contract TokenSwap is AccessControl, ReentrancyGuard, Pausable {
     function swapStableCoinToToken(
         address token,
         uint256 stableCoinAmount
-    ) external whenNotPaused nonReentrant {
+    ) external nonReentrant {
         require(stableCoinAmount > 0, "Amount must be greater than zero");
-        require(tokenFactory.isTokenCreatedByFactory(token), "Token not supported");
-        
+        require(
+            tokenFactory.isTokenCreatedByFactory(token),
+            "Token not supported"
+        );
+
         // Check if user is whitelisted
         require(stableCoin.whitelisted(msg.sender), "User not whitelisted");
-        
+
+        // Check user's stablecoin balance
+        require(
+            stableCoin.balanceOf(msg.sender) >= stableCoinAmount,
+            "Insufficient StableCoin balance"
+        );
+
         // Calculate token amount based on ratio
         uint256 tokenRatio = tokenFactory.tokenRatios(token);
         require(tokenRatio > 0, "Token ratio not set");
-        
+
         uint256 tokenAmount = stableCoinAmount * tokenRatio;
-        
-        // Calculate fee
-        uint256 feeAmount = 0;
-        if (feePercentage > 0) {
-            feeAmount = (stableCoinAmount * feePercentage) / BASIS_POINTS;
-            require(feeAmount < stableCoinAmount, "Fee exceeds amount");
-        }
-        
-        // Transfer StableCoin from user to this contract
-        stableCoin.safeTransferFrom(msg.sender, address(this), stableCoinAmount);
-        
-        // Send fee to collector
-        if (feeAmount > 0) {
-            stableCoin.safeTransfer(feeCollector, feeAmount);
-        }
-        
-        // Transfer tokens to user
-        IERC20(token).safeTransfer(msg.sender, tokenAmount);
-        
+
+        // Check for potential overflow (although Solidity 0.8+ has built-in checks)
+        require(
+            tokenAmount / tokenRatio == stableCoinAmount,
+            "Multiplication overflow"
+        );
+
+        // Transfer StableCoin from user to token contract
+        stableCoin.safeTransferFrom(msg.sender, token, stableCoinAmount);
+
+        // Mint tokens to user via factory
+        tokenFactory.mintToken(token, msg.sender, tokenAmount);
+
         emit StableCoinToToken(
-            msg.sender, 
-            token, 
-            stableCoinAmount, 
-            tokenAmount, 
-            feeAmount
+            msg.sender,
+            token,
+            stableCoinAmount,
+            tokenAmount
         );
     }
-    
+
     /**
      * @dev Swap Token for StableCoin
      * @param token The token address to swap
@@ -124,75 +106,54 @@ contract TokenSwap is AccessControl, ReentrancyGuard, Pausable {
     function swapTokenToStableCoin(
         address token,
         uint256 tokenAmount
-    ) external whenNotPaused nonReentrant {
+    ) external nonReentrant {
         require(tokenAmount > 0, "Amount must be greater than zero");
-        require(tokenFactory.isTokenCreatedByFactory(token), "Token not supported");
-        
+        require(
+            tokenFactory.isTokenCreatedByFactory(token),
+            "Token not supported"
+        );
+
         // Check if user is whitelisted
         require(stableCoin.whitelisted(msg.sender), "User not whitelisted");
-        
+
+        // Check user's token balance
+        require(
+            IERC20(token).balanceOf(msg.sender) >= tokenAmount,
+            "Insufficient token balance"
+        );
+
         // Calculate stablecoin amount based on ratio
         uint256 tokenRatio = tokenFactory.tokenRatios(token);
         require(tokenRatio > 0, "Token ratio not set");
-        
+
+        // Ensure the token amount is sufficient for at least 1 stablecoin
+        require(
+            tokenAmount >= tokenRatio,
+            "Token amount too small for conversion"
+        );
         uint256 stableCoinAmount = tokenAmount / tokenRatio;
-        require(stableCoinAmount > 0, "StableCoin amount too small");
-        
-        // Calculate fee
-        uint256 feeAmount = 0;
-        if (feePercentage > 0) {
-            feeAmount = (stableCoinAmount * feePercentage) / BASIS_POINTS;
-            require(feeAmount < stableCoinAmount, "Fee exceeds amount");
-        }
-        
-        uint256 stableCoinToTransfer = stableCoinAmount - feeAmount;
-        
+
+        // Check token contract has enough StableCoin balance
+        require(
+            stableCoin.balanceOf(token) >= stableCoinAmount,
+            "Insufficient stablecoin balance in token contract"
+        );
+
         // Transfer tokens from user to this contract
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
-        
-        // Transfer StableCoin to user
-        stableCoin.safeTransfer(msg.sender, stableCoinToTransfer);
-        
-        // Send fee to collector
-        if (feeAmount > 0) {
-            stableCoin.safeTransfer(feeCollector, feeAmount);
-        }
-        
-        emit TokenToStableCoin(
-            msg.sender, 
-            token, 
-            tokenAmount, 
-            stableCoinAmount, 
-            feeAmount
-        );
-    }
-    
-    function setFeePercentage(uint256 _feePercentage) external onlyRole(FEE_MANAGER_ROLE) {
-        require(_feePercentage <= MAX_FEE, "Fee too high");
-        feePercentage = _feePercentage;
-        emit FeeUpdated(_feePercentage);
-    }
-    
-    function setFeeCollector(address _feeCollector) external onlyRole(ADMIN_ROLE) {
-        require(_feeCollector != address(0), "Fee collector cannot be zero address");
-        feeCollector = _feeCollector;
-        emit FeeCollectorUpdated(_feeCollector);
-    }
-    
-    function pause() external onlyRole(PAUSER_ROLE) {
-        _pause();
-    }
-    
-    function unpause() external onlyRole(PAUSER_ROLE) {
-        _unpause();
-    }
 
-    function emergencyWithdraw(
-        address token,
-        uint256 amount,
-        address to
-    ) external onlyRole(ADMIN_ROLE) {
-        require(to != address(0), "Cannot withdraw to zero address");
-        IERC20(token).safeTransfer(to, amount);
+        // Burn the tokens
+        IERC20Burnable(token).burn(tokenAmount);
+
+        // // Transfer StableCoin from token contract to user
+        // // Need to have the token contract approve this contract first
+        IERC20Swap(token).swap(msg.sender, stableCoinAmount);
+
+        emit TokenToStableCoin(
+            msg.sender,
+            token,
+            tokenAmount,
+            stableCoinAmount
+        );
     }
 }
