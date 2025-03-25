@@ -176,6 +176,29 @@ stableCoinRouter.get(
   }
 );
 
+stableCoinRouter.post(
+  "/transfer",
+  [
+    body("private_key").isArray().withMessage("Addresses must be an array"),
+    body("addresses").isArray().withMessage("Addresses must be an array"),
+    body("amount").isNumeric().withMessage("Amount must be a number"),
+    validate,
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const result = await userContract(
+        req.body.private_key
+      ).transferStableCoin(req.body.addresses, Number(req.body.amount));
+      res.json({ success: true, result });
+    } catch (error) {
+      res.status(500).json({
+        message: "Failed to add batch to whitelist",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+);
+
 // Token Factory Routes
 const tokenFactoryRouter = express.Router();
 
@@ -305,6 +328,57 @@ tokenFactoryRouter.get(
   }
 );
 
+tokenFactoryRouter.get(
+  "/supply/:tokenAddress",
+  [
+    param("tokenAddress")
+      .isString()
+      .withMessage("Valid token address required"),
+    validate,
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const balance = await adminContract.checkTokenTotalSupply(
+        req.params.tokenAddress
+      );
+      res.json({ balance });
+    } catch (error) {
+      res.status(500).json({
+        message: "Failed to check token balance",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+);
+
+tokenFactoryRouter.post(
+  "/transfer",
+  [
+    body("private_key").isArray().withMessage("Addresses must be an array"),
+    body("tokenAddress").isArray().withMessage("Addresses must be an array"),
+    body("addresses").isArray().withMessage("Addresses must be an array"),
+    body("amount").isNumeric().withMessage("Amount must be a number"),
+    validate,
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const { tokenAddress, addresses, amount } = req.body;
+
+      const result = await userContract(req.body.private_key).tokenTransfer(
+        tokenAddress,
+        addresses,
+        Number(amount)
+      );
+      res.json({ success: true, result });
+    } catch (error) {
+      res.status(500).json({
+        message: "Failed to add batch to whitelist",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+);
+
 // StableCoin Routes
 const swapperRouter = express.Router();
 
@@ -336,5 +410,6 @@ swapperRouter.post(
 // Register all routers
 router.use("/stablecoin", authMiddleware, stableCoinRouter);
 router.use("/token", authMiddleware, tokenFactoryRouter);
+router.use("/swapper", authMiddleware, swapperRouter);
 
 export default router;

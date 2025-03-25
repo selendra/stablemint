@@ -10,10 +10,10 @@ import {
   testSwapStableCoinToToken,
 } from "./utils";
 
-const StableCoinAddress = "0x016D775eA829FA25C897835CF2e4E3b6da11f677";
-const ERC20FactoryAddres = "0xCc36286f45B5F4466F554c422766128A000Ee58E";
-const TokenSwapAddres = "0xe36541eD34B84Aad69A882F6aA3Bdd5C227DD3bC";
-const provider_url = "http://127.0.0.1:9944"; //"https://rpc.selendra.org";
+const StableCoinAddress = "0xd94548EcaDc804e4f30e9aee8ceB7ccD915855d3";
+const ERC20FactoryAddres = "0xB500ebe89Eb51896B2C002e765d7516a9F44eD90";
+const TokenSwapAddres = "0xD50474c7b28c7d7c2063489aE311b11a090867dC";
+const provider_url = "https://rpc.selendra.org"; //"http://127.0.0.1:9944";
 
 async function getContracts(wallet: ethers.Wallet, tokenAddress?: string) {
   const stableCoin = new Contract(StableCoinAddress, StableCoinABI, wallet);
@@ -198,7 +198,7 @@ async function main(
 }
 
 // Run the main function
-main(false, true, false)
+main(true, false, false)
   .then(() => process.exit(0))
   .catch((error) => {
     console.error(error);
