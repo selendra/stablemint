@@ -32,5 +32,10 @@ router.post(
 	],
 	loyaltyController.rejectToken
 );
+router.get(
+	"/created-by/:userId",
+	authMiddleware,
+	loyaltyController.getTokensByOwnerId
+);
 
 export default router;

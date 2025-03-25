@@ -64,7 +64,7 @@ export async function getTokenById(req: Request, res: Response) {
 
 export async function getTokensByOwnerId(req: Request, res: Response) {
 	try {
-		const data = await Token.find({ owner_id: req.body.owner_id });
+		const data = await Token.find({ owner_id: req.params.userId });
 		res.json(data);
 	} catch (error) {
 		console.error("getAllTokens error:", error);

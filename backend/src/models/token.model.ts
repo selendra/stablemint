@@ -53,7 +53,6 @@ const tokenSchema = new Schema<IToken>(
 		ratio: {
 			type: Number,
 			required: [true, "ratio is required"],
-			min: 1 / 1000,
 		},
 	},
 	{
