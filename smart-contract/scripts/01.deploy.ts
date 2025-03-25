@@ -60,8 +60,6 @@ async function main() {
 
   // Set up parameters for TokenSwap
   const adminAddress = deployer.address; // Using deployer as admin
-  const feeCollectorAddress = deployer.address; // Using deployer as fee collector
-  const feePercentage = 25; // 0.25% fee
 
   // Deploy TokenSwap
   console.log("Deploying TokenSwap...");
@@ -83,13 +81,15 @@ async function main() {
   const fundAmount = ethers.parseUnits("100000", 18); // 100,000 tokens with 18 decimals
   await stableCoin.mint(tokenSwapAddress, fundAmount);
 
+  // Grant factory minting role to token swap
+  console.log("Granting factory minter role to TokenSwap...");
+  await factory.grantRole(FACTORY_MINTER_ROLE, await tokenSwap.getAddress());
+
   console.log("\nDeployment Summary:");
   console.log("------------------");
   console.log("StableCoin:", stableCoinAddress);
   console.log("ERC20Factory:", factoryAddress);
   console.log("TokenSwap:", tokenSwapAddress);
-  console.log("Admin:", adminAddress);
-  console.log("\nTokenSwap is ready to use!");
 }
 
 // Run the deployment
