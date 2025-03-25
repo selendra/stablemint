@@ -10,10 +10,9 @@ import {
   testSwapStableCoinToToken,
 } from "./utils";
 
-const StableCoinAddress = "0x0eC1Fcae53BcE5ee89f6487F76985447Dc403518";
-const ERC20FactoryAddres = "0x777050fe50078627bD71D2A156FdF4Eba6aAcfF6";
-const TokenSwapAddres = "0xB798a9a85b00500DCD60e6ca028D19DCDAAcce70";
-const ERC20Token = "0x6264819F433c1364ceB1A84f31a3988591B6Ea8a";
+const StableCoinAddress = "0x016D775eA829FA25C897835CF2e4E3b6da11f677";
+const ERC20FactoryAddres = "0xCc36286f45B5F4466F554c422766128A000Ee58E";
+const TokenSwapAddres = "0xe36541eD34B84Aad69A882F6aA3Bdd5C227DD3bC";
 const provider_url = "http://127.0.0.1:9944"; //"https://rpc.selendra.org";
 
 async function getContracts(wallet: ethers.Wallet, tokenAddress?: string) {
@@ -170,7 +169,7 @@ async function main(
 
   const contracts: Contracts = await getContracts(
     wallet,
-    "0x957B304fdfd7a09662ac4D9C70Ac5B7A02585Dd5"
+    "0x1400db984B4d924142d203D04Ca33AD838985cCe"
   );
 
   if (isSetupContracts) {
@@ -199,7 +198,7 @@ async function main(
 }
 
 // Run the main function
-main(false, false, true)
+main(false, true, false)
   .then(() => process.exit(0))
   .catch((error) => {
     console.error(error);

@@ -1,21 +1,15 @@
 import { ethers } from "ethers";
 import {
   Contract,
-  Provider,
   Signer,
   ContractTransactionResponse,
   formatUnits,
   parseUnits,
-  keccak256,
-  toUtf8Bytes,
 } from "ethers";
-import {
-  ERC20FACTORY_ADMIN_ABI,
-  PAUSE_ADMIN_ABI,
-  ROLE_ADMIN_ABI,
-  STABLECOIN_ADMIN_ABI,
-  TOKENSWAP_ADMIN_ABI,
-} from "./abi";
+import { StableCoinABI } from "./abi/stablecoin";
+import { ERC20FactoryABI } from "./abi/erc20factory";
+import { TokenSwapABI } from "./abi/tokenswap";
+import { ERC20TokenABI } from "./abi/erc20token";
 
 interface TokenCreatedEvent {
   args: {
@@ -47,19 +41,15 @@ export class Admin {
     this.signer = new ethers.Wallet(private_key, this.provider);
     this.stableCoin = new Contract(
       stableCoinAddress,
-      STABLECOIN_ADMIN_ABI,
+      StableCoinABI,
       this.signer
     );
     this.tokenFactory = new Contract(
       tokenFactoryAddress,
-      ERC20FACTORY_ADMIN_ABI,
+      ERC20FactoryABI,
       this.signer
     );
-    this.tokenSwap = new Contract(
-      swapAddress,
-      TOKENSWAP_ADMIN_ABI,
-      this.signer
-    );
+    this.tokenSwap = new Contract(swapAddress, TokenSwapABI, this.signer);
   }
 
   /**
@@ -143,7 +133,7 @@ export class Admin {
     accountAddress: string
   ): Promise<number> {
     return this.executeViewOperation(async () => {
-      const token = this.getContract(tokenAddress, ERC20FACTORY_ADMIN_ABI);
+      const token = this.getContract(tokenAddress, ERC20FactoryABI);
       const balance = await token.balanceOf(accountAddress);
       return this.formatTokenAmount(balance);
     }, "Failed to check token balance");
@@ -151,7 +141,7 @@ export class Admin {
 
   async checkTokenTotalSupply(tokenAddress: string): Promise<number> {
     return this.executeViewOperation(async () => {
-      const token = this.getContract(tokenAddress, ERC20FACTORY_ADMIN_ABI);
+      const token = this.getContract(tokenAddress, ERC20FactoryABI);
       const supply = await token.totalSupply();
       return this.formatTokenAmount(supply);
     }, "Failed to check token total supply");
@@ -160,24 +150,10 @@ export class Admin {
   /**
    * StableCoin Whitelist Methods
    */
-  async checkEnforceWhitelist(): Promise<boolean> {
-    return this.executeViewOperation(
-      () => this.stableCoin.enforceWhitelistForReceivers(),
-      "Failed to check enforceWhitelistForReceivers"
-    );
-  }
-
   async checkWhitelist(accountAddress: string): Promise<boolean> {
     return this.executeViewOperation(
       () => this.stableCoin.whitelisted(accountAddress),
       "Failed to check WhiteList"
-    );
-  }
-
-  async setWhitelistReceiverPolicy(enforceForReceivers: boolean) {
-    return this.executeTransaction(
-      () => this.stableCoin.setWhitelistReceiverPolicy(enforceForReceivers),
-      "Failed to set WhiteList Policy"
     );
   }
 
@@ -228,6 +204,76 @@ export class Admin {
     );
   }
 
+  async swapperStableToken(tokenAdress: string, amount: number) {
+    const swapAddress = await this.tokenSwap.getAddress();
+    const signerAddress = await this.signer.getAddress();
+
+    const swapAmonut = parseUnits(amount.toString(), 18);
+    const token = this.getContract(tokenAdress, ERC20TokenABI);
+
+    // Get initial balances
+    const initialStableCoinBalance = await this.stableCoin.balanceOf(
+      signerAddress
+    );
+    const initialTokenBalance = await token.balanceOf(signerAddress);
+
+    console.log(
+      `Initial StableCoin balance: ${ethers.formatUnits(
+        initialStableCoinBalance,
+        18
+      )}`
+    );
+    console.log(
+      `Initial Token balance: ${ethers.formatUnits(initialTokenBalance, 18)}`
+    );
+
+    console.log(`Swapping ${swapAmonut} StableCoins for Tokens...`);
+
+    const approve = await this.stableCoin.approve(swapAddress, swapAmonut);
+    await approve.wait();
+
+    const swapTx = await this.tokenSwap.swapStableCoinToToken(
+      tokenAdress,
+      swapAmonut
+    );
+    await swapTx.wait();
+
+    // Get final balances
+    const finalStableCoinBalance = await this.stableCoin.balanceOf(
+      signerAddress
+    );
+    const finalTokenBalance = await token.balanceOf(signerAddress);
+    const tokenContractStableCoinBalance = await this.stableCoin.balanceOf(
+      tokenAdress
+    );
+
+    console.log(
+      `Final StableCoin balance: ${ethers.formatUnits(
+        finalStableCoinBalance,
+        18
+      )}`
+    );
+    console.log(
+      `Final Token balance: ${ethers.formatUnits(finalTokenBalance, 18)}`
+    );
+    console.log(
+      `Token contract StableCoin balance: ${ethers.formatUnits(
+        tokenContractStableCoinBalance,
+        18
+      )}`
+    );
+    console.log(
+      `Tokens received: ${ethers.formatUnits(
+        finalTokenBalance - initialTokenBalance,
+        18
+      )}`
+    );
+
+    const ratio = await this.tokenFactory.tokenRatios(await token.getAddress());
+    const expectedTokens = swapAmonut * ratio;
+    console.log(`Expected tokens: ${ethers.formatUnits(expectedTokens, 18)}`);
+  }
+
   async transferStableCoin(toAddress: string, amount: number) {
     return this.executeTransaction(
       () =>
@@ -271,7 +317,15 @@ export class Admin {
 
           if (parsedLog?.name === "TokenCreated") {
             const event = parsedLog as unknown as TokenCreatedEvent;
-            return event.args.tokenAddress;
+
+            const tokenAddress = event.args.tokenAddress;
+            const addWhiteList = await this.stableCoin.addToWhitelist(
+              tokenAddress
+            );
+
+            await addWhiteList.wait();
+
+            return tokenAddress;
           }
         } catch (e) {
           // Continue trying other logs if parsing fails
@@ -339,115 +393,5 @@ export class Admin {
 
   async getAllCreatedTokens(): Promise<string[]> {
     return this.tokenFactory.getAllTokenAddresses();
-  }
-
-  /**
-   * Role Management
-   */
-  async grantRole(
-    contractAddress: string,
-    role: string,
-    accountAddress: string
-  ) {
-    const contract = this.getContract(contractAddress, ROLE_ADMIN_ABI, true);
-    const roleHash = keccak256(toUtf8Bytes(role));
-
-    return this.executeTransaction(
-      () => contract.grantRole(roleHash, accountAddress),
-      "Failed to Grant Role"
-    );
-  }
-
-  async revokeRole(
-    contractAddress: string,
-    role: string,
-    accountAddress: string
-  ) {
-    const contract = this.getContract(contractAddress, ROLE_ADMIN_ABI, true);
-    const roleHash = keccak256(toUtf8Bytes(role));
-
-    return this.executeTransaction(
-      () => contract.revokeRole(roleHash, accountAddress),
-      "Failed to Revoke Role"
-    );
-  }
-
-  async hasRole(
-    contractAddress: string,
-    role: string,
-    accountAddress: string
-  ): Promise<boolean> {
-    return this.executeViewOperation(async () => {
-      const contract = new Contract(
-        contractAddress,
-        ROLE_ADMIN_ABI,
-        this.provider
-      );
-      const roleHash = keccak256(toUtf8Bytes(role));
-      return await contract.hasRole(roleHash, accountAddress);
-    }, "Failed to Get Role");
-  }
-
-  /**
-   * Pause/Unpause Functionality
-   */
-  async isPausedContract(contractAddress: string): Promise<boolean> {
-    const contract = this.getContract(contractAddress, PAUSE_ADMIN_ABI);
-
-    return this.executeViewOperation(
-      () => contract.paused(),
-      "Failed to check pause status"
-    );
-  }
-
-  async pauseContract(contractAddress: string) {
-    const contract = this.getContract(contractAddress, PAUSE_ADMIN_ABI, true);
-
-    return this.executeTransaction(
-      () => contract.pause(),
-      "Failed to pause contract"
-    );
-  }
-
-  async unpauseContract(contractAddress: string) {
-    const contract = this.getContract(contractAddress, PAUSE_ADMIN_ABI, true);
-
-    return this.executeTransaction(
-      () => contract.unpause(),
-      "Failed to unpause contract"
-    );
-  }
-
-  /**
-   * Token Swap Methods
-   */
-  async setFeePercentage(feePercentage: number) {
-    return this.executeTransaction(
-      () => this.tokenSwap.setFeePercentage(feePercentage),
-      "Failed to set Fee Percentage"
-    );
-  }
-
-  async setFeeCollector(feeCollectorAddress: string) {
-    return this.executeTransaction(
-      () => this.tokenSwap.setFeeCollector(feeCollectorAddress),
-      "Failed to set Fee Collector"
-    );
-  }
-
-  async emergencyWithdraw(
-    tokenAddress: string,
-    amount: number,
-    toAddress: string
-  ) {
-    return this.executeTransaction(
-      () =>
-        this.tokenSwap.emergencyWithdraw(
-          tokenAddress,
-          parseUnits(amount.toString(), 18),
-          toAddress
-        ),
-      "Failed to emergency withdraw"
-    );
   }
 }

@@ -39,13 +39,13 @@ export async function setupContracts(
 
   await grantRole.wait();
 
-  // Approve stablecoin for token swap
-  console.log("Approving StableCoin for TokenSwap...");
-  const approve = await stableCoin.approve(
-    await tokenSwap.getAddress(),
-    ethers.parseUnits("1000000", 18) // Approve a large amount
-  );
-  await approve.wait();
+  // // Approve stablecoin for token swap
+  // console.log("Approving StableCoin for TokenSwap...");
+  // const approve = await stableCoin.approve(
+  //   await tokenSwap.getAddress(),
+  //   ethers.parseUnits("1000000", 18) // Approve a large amount
+  // );
+  // await approve.wait();
 
   console.log("Setup completed successfully!");
 }
@@ -127,6 +127,14 @@ export async function testSwapStableCoinToToken(
       18
     )} StableCoins for Tokens...`
   );
+
+  // Approve stablecoin for token swap
+  console.log("Approving StableCoin for TokenSwap...");
+  const approve = await stableCoin.approve(
+    await tokenSwap.getAddress(),
+    stableCoinAmount
+  );
+  await approve.wait();
 
   // Perform swap
   const swapTx = await tokenSwap.swapStableCoinToToken(
