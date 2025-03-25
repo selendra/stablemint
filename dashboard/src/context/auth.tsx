@@ -27,7 +27,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 		if (!isLoading && !isAuth) {
 			console.log("pathname", pathname);
 
-			if (pathname.startsWith("/dashboard")) {
+			if (pathname.startsWith("/dashboard") || pathname === "/") {
 				router.push("/login");
 			}
 		}

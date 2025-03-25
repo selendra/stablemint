@@ -22,7 +22,7 @@ export default function EachToken({ token }: { token: Token }) {
 				{new Intl.NumberFormat("en-GB", {
 					style: "currency",
 					currency: "KHR",
-					maximumFractionDigits: 8,
+					maximumFractionDigits: 18,
 				}).format(token.ratio / token.stable_coin_amount)}
 			</TableCell>
 			<TableCell className="">

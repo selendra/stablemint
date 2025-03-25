@@ -118,3 +118,21 @@ export async function getAccountWhitelistStatus({
 
 	return request.value;
 }
+
+export async function getLoyaltyTokenBalance({
+	tokenAddress,
+	accountAddress,
+}: {
+	accountAddress: string;
+	tokenAddress: string;
+}) {
+	const request = await get<BalanceResponse>(
+		adminPath(`token/balance/${tokenAddress}/${accountAddress}`)
+	);
+
+	if (request.isErr()) {
+		throw request.error;
+	}
+
+	return request.value;
+}

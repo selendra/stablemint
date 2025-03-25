@@ -24,6 +24,16 @@ export async function getAllTokens() {
 	return request.value;
 }
 
+export async function getTokensByOwnerId({ userId }: { userId: string }) {
+	const request = await get<Token[]>(tokenPath(`created-by/${userId}`));
+
+	if (request.isErr()) {
+		throw request.error;
+	}
+
+	return request.value;
+}
+
 export async function getPendingTokens() {
 	const request = await get<Token[]>(tokenPath("pending"));
 

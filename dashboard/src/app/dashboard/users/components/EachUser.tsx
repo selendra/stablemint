@@ -8,12 +8,14 @@ import {
 	getStableCoinBalance,
 	removeWhiteList,
 } from "@/lib/api/admin/stableCoint";
+import { releaseAirDrop } from "@/lib/api/admin/user";
 import { User } from "@/lib/api/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import React from "react";
+import React, { useState } from "react";
 
 export default function EachUser({ user }: { user: User }) {
+	const [whitelisting, setWhitelisting] = useState(false);
 	const { data: balance } = useQuery({
 		queryKey: ["stableCoinBalance", user._id],
 		queryFn: () => {
@@ -28,6 +30,10 @@ export default function EachUser({ user }: { user: User }) {
 		},
 	});
 
+	const airdrop = useMutation({
+		mutationFn: releaseAirDrop,
+	});
+
 	const addWhitelist = useMutation({
 		mutationKey: ["addWhiteList", user._id],
 		mutationFn: addWhiteList,
@@ -37,6 +43,19 @@ export default function EachUser({ user }: { user: User }) {
 		mutationKey: ["removeWhiteList", user._id],
 		mutationFn: removeWhiteList,
 	});
+
+	async function handleWhitelist() {
+		try {
+			setWhitelisting(true);
+			await addWhitelist.mutateAsync({ address: user.address! });
+			await airdrop.mutateAsync({ toAddress: user.address!, amount: 1 });
+			await refetch();
+			setWhitelisting(false);
+		} catch (error) {
+			console.log(error);
+			setWhitelisting(false);
+		}
+	}
 
 	return (
 		<TableRow>
@@ -59,14 +78,8 @@ export default function EachUser({ user }: { user: User }) {
 
 			<TableCell>
 				{!Boolean(accountStatus?.isWhitelisted) && (
-					<Button
-						disabled={addWhitelist.isPending}
-						onClick={async () => {
-							await addWhitelist.mutateAsync({ address: user.address! });
-							await refetch();
-						}}
-					>
-						{addWhitelist.isPending && <Loader2 className="animate-spin" />}
+					<Button disabled={whitelisting} onClick={handleWhitelist}>
+						{whitelisting && <Loader2 className="animate-spin" />}
 						Activate
 					</Button>
 				)}

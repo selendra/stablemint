@@ -29,7 +29,7 @@ export function LoginForm({
 	useEffect(() => {
 		if (login.data?.token) {
 			window.localStorage.setItem("access_token", login.data.token);
-			window.location.replace("/dashboard");
+			window.location.replace("/");
 		}
 	}, [login]);
 

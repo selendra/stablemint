@@ -30,7 +30,7 @@ export function RegisterForm({
 	useEffect(() => {
 		if (register.data?.token) {
 			window.localStorage.setItem("access_token", register.data.token);
-			window.location.replace("/dashboard");
+			window.location.replace("/");
 		}
 	}, [register]);
 

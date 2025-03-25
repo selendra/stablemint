@@ -7,6 +7,7 @@ import {
 	ChartCandlestick,
 	Command,
 	Frame,
+	HomeIcon,
 	LifeBuoy,
 	Map,
 	PieChart,
@@ -133,6 +134,11 @@ const data = {
 		},
 	],
 	projects: [
+		{
+			name: "Home",
+			url: "/",
+			icon: HomeIcon,
+		},
 		{
 			name: "Overview",
 			url: "/dashboard",
