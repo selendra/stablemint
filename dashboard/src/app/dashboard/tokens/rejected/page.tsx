@@ -3,7 +3,6 @@
 import {
 	Table,
 	TableBody,
-	TableCaption,
 	TableHead,
 	TableHeader,
 	TableRow,
@@ -22,7 +21,6 @@ export default function RejectedTokens() {
 	return (
 		<TabsContent value="/dashboard/tokens/rejected">
 			<Table>
-				<TableCaption>A list of your recent invoices.</TableCaption>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Name</TableHead>

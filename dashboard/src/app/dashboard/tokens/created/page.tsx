@@ -1,6 +1,5 @@
 "use client";
 import {
-	TableCaption,
 	TableHeader,
 	TableRow,
 	TableHead,
@@ -22,7 +21,6 @@ export default function CreatedTokens() {
 	return (
 		<TabsContent value="/dashboard/tokens/created">
 			<Table>
-				<TableCaption>A list of your recent invoices.</TableCaption>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Name</TableHead>

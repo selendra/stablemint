@@ -7,10 +7,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 	return (
 		<div className="[--header-height:calc(--spacing(14))]">
 			<SidebarProvider className="flex flex-col">
-				<SiteHeader />
 				<div className="flex flex-1">
 					<AppSidebar />
 					<SidebarInset>
+						<SiteHeader />
 						<div className="flex flex-1 flex-col gap-4 p-4">{children}</div>
 					</SidebarInset>
 				</div>

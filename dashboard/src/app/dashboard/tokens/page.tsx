@@ -4,7 +4,6 @@ import React from "react";
 import {
 	Table,
 	TableBody,
-	TableCaption,
 	TableHead,
 	TableHeader,
 	TableRow,
@@ -23,7 +22,6 @@ export default function Tokens() {
 	return (
 		<TabsContent value="/dashboard/tokens">
 			<Table>
-				<TableCaption>A list of your recent invoices.</TableCaption>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Name</TableHead>

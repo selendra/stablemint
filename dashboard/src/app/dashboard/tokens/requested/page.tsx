@@ -3,7 +3,6 @@
 import {
 	Table,
 	TableBody,
-	TableCaption,
 	TableHead,
 	TableHeader,
 	TableRow,
@@ -22,7 +21,6 @@ export default function RequestedToken() {
 	return (
 		<TabsContent value="/dashboard/tokens/requested">
 			<Table>
-				<TableCaption>A list of your recent invoices.</TableCaption>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Name</TableHead>
