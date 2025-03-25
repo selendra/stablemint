@@ -401,6 +401,31 @@ swapperRouter.post(
   }
 );
 
+swapperRouter.post(
+  "/swap_token_to_stable_coin",
+  [
+    body("private_key").isString().withMessage("Valid token address required"),
+    body("tokenAddress").isString().withMessage("Valid token address required"),
+    body("amount").isNumeric().withMessage("Amount must be a number"),
+    validate,
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const { tokenAddress, amount, private_key } = req.body;
+      const result = await userContract(private_key).swapperTokenStable(
+        tokenAddress,
+        Number(amount)
+      );
+      res.json({ success: true, result });
+    } catch (error) {
+      res.status(500).json({
+        message: "Failed to swap token",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+);
+
 // Register all routers
 router.use("/stablecoin", authMiddleware, stableCoinRouter);
 router.use("/token", authMiddleware, tokenFactoryRouter);

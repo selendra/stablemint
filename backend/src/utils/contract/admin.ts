@@ -226,6 +226,43 @@ export class Admin {
     }
   }
 
+  async swapperTokenStable(tokenAdress: string, amount: number) {
+    try {
+      const swapAddress = await this.tokenSwap.getAddress();
+      const token = this.getContract(tokenAdress, ERC20TokenABI, true);
+      const ratio = await this.tokenFactory.tokenRatios(
+        await token.getAddress()
+      );
+
+      const swapAmonut = parseUnits(amount.toString(), 18); // Token Amount
+      const stableCoinAmount = swapAmonut / ratio; // StableCoin Amount
+
+      // Have the token approve the TokenSwap contract to spend its StableCoins
+      const approveStable = await this.stableCoin.approve(
+        swapAddress,
+        stableCoinAmount
+      );
+      await approveStable.wait();
+
+      // Approve token swap to spend tokens
+      const approve = await token.approve(
+        await this.tokenSwap.getAddress(),
+        swapAmonut
+      );
+      await approve.wait();
+
+      const swapTx = await this.tokenSwap.swapTokenToStableCoin(
+        await token.getAddress(),
+        swapAmonut
+      );
+      await swapTx.wait();
+
+      return swapTx;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async transferStableCoin(toAddress: string, amount: number) {
     return this.executeTransaction(
       () =>
