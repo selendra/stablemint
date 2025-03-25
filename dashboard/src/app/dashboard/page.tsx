@@ -23,16 +23,13 @@ export default function Page() {
 	return (
 		<div className="grid grid-cols-3 gap-6">
 			<Card>
-				<CardHeader className="flex flex-col items-stretch space-y-0 p-0 sm:flex-row">
-					<div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
+				<CardHeader className="flex flex-col space-y-4 p-0">
+					<div className="flex flex-1 flex-col justify-center gap-1 px-6">
 						<CardTitle>Market Cap</CardTitle>
 						<CardDescription>Total supply of KHR token</CardDescription>
 					</div>
 					<div className="flex">
-						<button className="flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 sm:px-8 sm:py-6">
-							<span className="text-xs text-muted-foreground">
-								Total Supply
-							</span>
+						<button className="flex flex-1 flex-col justify-center gap-1 border-t px-6 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 ">
 							<span className="text-lg font-bold leading-none sm:text-3xl">
 								{new Intl.NumberFormat("en-GB", {
 									style: "currency",
@@ -44,16 +41,15 @@ export default function Page() {
 				</CardHeader>
 			</Card>
 			<Card>
-				<CardHeader className="flex flex-col items-stretch space-y-0 p-0 sm:flex-row">
-					<div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
+				<CardHeader className="flex flex-col space-y-4 p-0">
+					<div className="flex flex-1 flex-col justify-center gap-1 px-6">
 						<CardTitle>Loyalty Tokens</CardTitle>
 						<CardDescription>
 							Total supply of loyalty tokens base on KHR
 						</CardDescription>
 					</div>
 					<div className="flex">
-						<button className="flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 sm:px-8 sm:py-6">
-							<span className="text-xs text-muted-foreground">Token Types</span>
+						<button className="flex flex-1 flex-col justify-center gap-1 border-t px-6 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 ">
 							<span className="text-lg font-bold leading-none sm:text-3xl">
 								{new Intl.NumberFormat("en-GB", {
 									style: "decimal",
@@ -66,16 +62,13 @@ export default function Page() {
 			</Card>
 
 			<Card>
-				<CardHeader className="flex flex-col items-stretch space-y-0 p-0 sm:flex-row">
-					<div className="flex flex-1 flex-col justify-center gap-1 px-6 py-5 sm:py-6">
+				<CardHeader className="flex flex-col space-y-4 p-0">
+					<div className="flex flex-1 flex-col justify-center gap-1 px-6">
 						<CardTitle>Market Cap</CardTitle>
 						<CardDescription>Total supply of KHR token</CardDescription>
 					</div>
 					<div className="flex">
-						<button className="flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 sm:px-8 sm:py-6">
-							<span className="text-xs text-muted-foreground">
-								Total Supply
-							</span>
+						<button className="flex flex-1 flex-col justify-center gap-1 border-t px-6 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 ">
 							<span className="text-lg font-bold leading-none sm:text-3xl">
 								{new Intl.NumberFormat("en-GB", {
 									style: "currency",
