@@ -11,7 +11,7 @@ export const ERC20FactoryABI = [
   "function tokenRatios(address token) view returns (uint256)",
   "function isTokenCreatedByFactory(address) view returns (bool)",
   "function allCreatedTokens(uint256) view returns (address)",
-  "function createToken(string memory name, string memory symbol, address tokenOwner, uint256 tokensPerStableCoin) returns (address)",
+  "function createToken(string memory name, string memory symbol, address stableCoinAddress, address swapperAddress, address tokenOwner, uint256 tokensPerStableCoin) returns (address)",
   "function mintToken(address tokenAddress, address to, uint256 amount)",
   "function getAllTokenAddresses() view returns (address[] memory)",
 

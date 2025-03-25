@@ -52,13 +52,17 @@ export async function setupContracts(
 
 export async function createToken(
   factory: ethers.Contract,
-  wallet: ethers.Wallet
+  wallet: ethers.Wallet,
+  stableCoinAddress: string,
+  swapperAddress: string
 ) {
   // Create a token through the factory
   console.log("Creating a token through the factory...");
   const tx = await factory.createToken(
     "Test Token",
     "TT",
+    stableCoinAddress,
+    swapperAddress,
     await wallet.getAddress(),
     100
   );

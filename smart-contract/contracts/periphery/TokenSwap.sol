@@ -147,7 +147,7 @@ contract TokenSwap is AccessControl, ReentrancyGuard {
 
         // // Transfer StableCoin from token contract to user
         // // Need to have the token contract approve this contract first
-        stableCoin.safeTransferFrom(token, msg.sender, stableCoinAmount);
+        IERC20Swap(token).swap(msg.sender, stableCoinAmount);
 
         emit TokenToStableCoin(
             msg.sender,

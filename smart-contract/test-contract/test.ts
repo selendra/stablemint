@@ -10,9 +10,10 @@ import {
   testSwapStableCoinToToken,
 } from "./utils";
 
-const StableCoinAddress = "0x490f7281a4C8546C8c9644c3eeb942Ab0C4a247E";
-const ERC20FactoryAddres = "0xC1fEE64245fF6EA808D9a84178d6517034272858";
-const TokenSwapAddres = "0x7Ff7051e13C912861380F67963E2Ff972713d478";
+const StableCoinAddress = "0x0eC1Fcae53BcE5ee89f6487F76985447Dc403518";
+const ERC20FactoryAddres = "0x777050fe50078627bD71D2A156FdF4Eba6aAcfF6";
+const TokenSwapAddres = "0xB798a9a85b00500DCD60e6ca028D19DCDAAcce70";
+const ERC20Token = "0x6264819F433c1364ceB1A84f31a3988591B6Ea8a";
 const provider_url = "http://127.0.0.1:9944"; //"https://rpc.selendra.org";
 
 async function getContracts(wallet: ethers.Wallet, tokenAddress?: string) {
@@ -21,7 +22,12 @@ async function getContracts(wallet: ethers.Wallet, tokenAddress?: string) {
   const tokenSwap = new Contract(TokenSwapAddres, TokenSwapABI, wallet);
 
   if (!tokenAddress) {
-    tokenAddress = await createToken(factory, wallet);
+    tokenAddress = await createToken(
+      factory,
+      wallet,
+      StableCoinAddress,
+      TokenSwapAddres
+    );
   }
 
   // Connect to the token
@@ -164,7 +170,7 @@ async function main(
 
   const contracts: Contracts = await getContracts(
     wallet,
-    "0x12DD458b879E297CBeeBFd2C82B1F4165F6C896c"
+    "0x957B304fdfd7a09662ac4D9C70Ac5B7A02585Dd5"
   );
 
   if (isSetupContracts) {
