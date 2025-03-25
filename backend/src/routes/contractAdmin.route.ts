@@ -181,6 +181,29 @@ stableCoinRouter.get(
 	}
 );
 
+stableCoinRouter.post(
+	"/transfer",
+	[
+		body("private_key").isString().withMessage("Addresses must be an array"),
+		body("addresses").isString().withMessage("Addresses must be an array"),
+		body("amount").isNumeric().withMessage("Amount must be a number"),
+		validate,
+	],
+	async (req: Request, res: Response) => {
+		try {
+			const result = await userContract(
+				req.body.private_key
+			).transferStableCoin(req.body.addresses, Number(req.body.amount));
+			res.json({ success: true, result });
+		} catch (error) {
+			res.status(500).json({
+				message: "Failed to add batch to whitelist",
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+);
+
 // Token Factory Routes
 const tokenFactoryRouter = express.Router();
 
@@ -212,12 +235,6 @@ tokenFactoryRouter.post(
 	[
 		body("name").isString().withMessage("Token name is required"),
 		body("symbol").isString().withMessage("Token symbol is required"),
-		body("stableCoinAddress")
-			.isString()
-			.withMessage("stableCoinAddress address is required"),
-		body("swapperAddress")
-			.isString()
-			.withMessage("swapperAddress address is required"),
 		body("tokenOwner")
 			.isString()
 			.withMessage("Token owner address is required"),
@@ -315,28 +332,104 @@ tokenFactoryRouter.get(
 	}
 );
 
+tokenFactoryRouter.get(
+	"/supply/:tokenAddress",
+	[
+		param("tokenAddress")
+			.isString()
+			.withMessage("Valid token address required"),
+		validate,
+	],
+	async (req: Request, res: Response) => {
+		try {
+			const balance = await adminContract.checkTokenTotalSupply(
+				req.params.tokenAddress
+			);
+			res.json({ balance });
+		} catch (error) {
+			res.status(500).json({
+				message: "Failed to check token balance",
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+);
+
+tokenFactoryRouter.post(
+	"/transfer",
+	[
+		body("private_key").isString().withMessage("Private key must be an string"),
+		body("tokenAddress").isString().withMessage("Addresses must be an string"),
+		body("toAddress").isString().withMessage("Addresses must be an string"),
+		body("amount").isNumeric().withMessage("Amount must be a number"),
+		validate,
+	],
+	async (req: Request, res: Response) => {
+		try {
+			const { tokenAddress, toAddress, amount } = req.body;
+
+			const result = await userContract(req.body.private_key).tokenTransfer(
+				tokenAddress,
+				toAddress,
+				Number(amount)
+			);
+			res.json({ success: true, result });
+		} catch (error) {
+			res.status(500).json({
+				message: "Failed to Transfer Token",
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+);
+
 // StableCoin Routes
 const swapperRouter = express.Router();
 
 swapperRouter.post(
 	"/swap_stable_coin_to_token",
 	[
-		body("privateKey").isString().withMessage("Valid token address required"),
+		body("private_key").isString().withMessage("Valid token address required"),
 		body("tokenAddress").isString().withMessage("Valid token address required"),
 		body("amount").isNumeric().withMessage("Amount must be a number"),
 		validate,
 	],
 	async (req: Request, res: Response) => {
 		try {
-			const { tokenAddress, amount, privateKey } = req.body;
-			const result = await userContract(privateKey).swapperStableToken(
+			const { tokenAddress, amount, private_key } = req.body;
+			const result = await userContract(private_key).swapperStableToken(
 				tokenAddress,
 				Number(amount)
 			);
-			res.json(result);
+			res.json({ success: true, result });
 		} catch (error) {
 			res.status(500).json({
-				message: "Failed to mint token",
+				message: "Failed to swap token",
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+);
+
+swapperRouter.post(
+	"/swap_token_to_stable_coin",
+	[
+		body("private_key").isString().withMessage("Valid token address required"),
+		body("tokenAddress").isString().withMessage("Valid token address required"),
+		body("amount").isNumeric().withMessage("Amount must be a number"),
+		validate,
+	],
+	async (req: Request, res: Response) => {
+		try {
+			const { tokenAddress, amount, private_key } = req.body;
+			const result = await userContract(private_key).swapperTokenStable(
+				tokenAddress,
+				Number(amount)
+			);
+			res.json({ success: true, result });
+		} catch (error) {
+			res.status(500).json({
+				message: "Failed to swap token",
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
@@ -351,5 +444,6 @@ userRouter.get("/", authMiddleware, authController.getAllUsers);
 router.use("/stablecoin", authMiddleware, stableCoinRouter);
 router.use("/token", authMiddleware, tokenFactoryRouter);
 router.use("/users", userRouter);
+router.use("/swapper", authMiddleware, swapperRouter);
 
 export default router;

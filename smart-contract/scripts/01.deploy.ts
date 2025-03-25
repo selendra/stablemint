@@ -18,7 +18,7 @@ async function main() {
 
   // Deploy StableCoin contract
   console.log("Deploying StableCoin...");
-  const stableCoin = await StableCoin.deploy("KHMER_RIEAL", "KHR", 1000000);
+  const stableCoin = await StableCoin.deploy("KHMER_RIEL", "KHR", 1000000);
   await stableCoin.waitForDeployment();
   const stableCoinAddress = await stableCoin.getAddress();
   console.log("StableCoin deployed to:", stableCoinAddress);
