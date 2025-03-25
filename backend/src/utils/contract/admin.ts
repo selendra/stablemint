@@ -207,73 +207,23 @@ export class Admin {
   }
 
   async swapperStableToken(tokenAdress: string, amount: number) {
-    const swapAddress = await this.tokenSwap.getAddress();
-    const signerAddress = await this.signer.getAddress();
+    try {
+      const swapAddress = await this.tokenSwap.getAddress();
+      const swapAmonut = parseUnits(amount.toString(), 18);
 
-    const swapAmonut = parseUnits(amount.toString(), 18);
-    const token = this.getContract(tokenAdress, ERC20TokenABI);
+      const approve = await this.stableCoin.approve(swapAddress, swapAmonut);
+      await approve.wait();
 
-    // Get initial balances
-    const initialStableCoinBalance = await this.stableCoin.balanceOf(
-      signerAddress
-    );
-    const initialTokenBalance = await token.balanceOf(signerAddress);
+      const swapTx = await this.tokenSwap.swapStableCoinToToken(
+        tokenAdress,
+        swapAmonut
+      );
+      await swapTx.wait();
 
-    console.log(
-      `Initial StableCoin balance: ${ethers.formatUnits(
-        initialStableCoinBalance,
-        18
-      )}`
-    );
-    console.log(
-      `Initial Token balance: ${ethers.formatUnits(initialTokenBalance, 18)}`
-    );
-
-    console.log(`Swapping ${swapAmonut} StableCoins for Tokens...`);
-
-    const approve = await this.stableCoin.approve(swapAddress, swapAmonut);
-    await approve.wait();
-
-    const swapTx = await this.tokenSwap.swapStableCoinToToken(
-      tokenAdress,
-      swapAmonut
-    );
-    await swapTx.wait();
-
-    // Get final balances
-    const finalStableCoinBalance = await this.stableCoin.balanceOf(
-      signerAddress
-    );
-    const finalTokenBalance = await token.balanceOf(signerAddress);
-    const tokenContractStableCoinBalance = await this.stableCoin.balanceOf(
-      tokenAdress
-    );
-
-    console.log(
-      `Final StableCoin balance: ${ethers.formatUnits(
-        finalStableCoinBalance,
-        18
-      )}`
-    );
-    console.log(
-      `Final Token balance: ${ethers.formatUnits(finalTokenBalance, 18)}`
-    );
-    console.log(
-      `Token contract StableCoin balance: ${ethers.formatUnits(
-        tokenContractStableCoinBalance,
-        18
-      )}`
-    );
-    console.log(
-      `Tokens received: ${ethers.formatUnits(
-        finalTokenBalance - initialTokenBalance,
-        18
-      )}`
-    );
-
-    const ratio = await this.tokenFactory.tokenRatios(await token.getAddress());
-    const expectedTokens = swapAmonut * ratio;
-    console.log(`Expected tokens: ${ethers.formatUnits(expectedTokens, 18)}`);
+      return swapTx;
+    } catch (error) {
+      throw error;
+    }
   }
 
   async transferStableCoin(toAddress: string, amount: number) {

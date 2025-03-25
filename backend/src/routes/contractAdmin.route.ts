@@ -379,22 +379,22 @@ const swapperRouter = express.Router();
 swapperRouter.post(
   "/swap_stable_coin_to_token",
   [
-    body("privateKey").isString().withMessage("Valid token address required"),
+    body("private_key").isString().withMessage("Valid token address required"),
     body("tokenAddress").isString().withMessage("Valid token address required"),
     body("amount").isNumeric().withMessage("Amount must be a number"),
     validate,
   ],
   async (req: Request, res: Response) => {
     try {
-      const { tokenAddress, amount, privateKey } = req.body;
-      const result = await userContract(privateKey).swapperStableToken(
+      const { tokenAddress, amount, private_key } = req.body;
+      const result = await userContract(private_key).swapperStableToken(
         tokenAddress,
         Number(amount)
       );
-      res.json(result);
+      res.json({ success: true, result });
     } catch (error) {
       res.status(500).json({
-        message: "Failed to mint token",
+        message: "Failed to swap token",
         error: error instanceof Error ? error.message : String(error),
       });
     }
