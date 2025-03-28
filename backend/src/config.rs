@@ -27,3 +27,21 @@ impl DatabaseConfig {
         })
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Server {
+    pub port: String,
+    pub address: String,
+}
+
+impl Server {
+    pub fn from_env() -> Result<Self> {
+        // Load .env file only once per process
+        dotenv().ok();
+
+        Ok(Self {
+            port: env::var("PORT").unwrap_or_else(|_| "3000".to_string()),
+            address: env::var("ADDRESS").unwrap_or_else(|_| "0.0.0.0".to_string()),
+        })
+    }
+}

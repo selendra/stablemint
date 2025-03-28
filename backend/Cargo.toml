@@ -22,7 +22,7 @@ axum = "0.8.1"
 async-trait = "0.1.88"
 async-graphql-axum = "7.0.16"
 async-graphql = { version = "7.0.16", features = ["chrono"] }
-tower = "0.5.2"
+tower = { version = "0.5.2" }
 tower-http = { version = "0.6.2", features = [
     "trace",
     "cors",
