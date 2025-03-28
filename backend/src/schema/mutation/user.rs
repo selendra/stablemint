@@ -7,10 +7,10 @@ use async_graphql::{Context, Object, Result};
 use std::sync::Arc;
 use tracing::error;
 
-pub struct Mutation;
+pub struct UserMutation;
 
 #[Object]
-impl Mutation {
+impl UserMutation {
     // Register a new user
     async fn register(
         &self,
