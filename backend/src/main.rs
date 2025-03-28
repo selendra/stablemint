@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use backend::{
     config::Server,
     error::{AppError, AppErrorExt},
+    handlers::auth::AuthService,
     routes,
     schema::create_schema,
 };
@@ -26,8 +29,13 @@ async fn main() -> Result<(), AppError> {
 
     info!("Configuration loaded successfully");
 
-    // Create GraphQL schema
-    let schema = create_schema();
+    // In main.rs where you create the schema
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "your_fallback_secret_key_for_development_only".to_string())
+        .into_bytes();
+
+    let auth_service = Arc::new(AuthService::new(&jwt_secret));
+    let schema = create_schema(Some(Arc::clone(&auth_service)));
     info!("GraphQL schema created");
 
     // Build the application with routes

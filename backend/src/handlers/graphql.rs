@@ -1,29 +1,53 @@
-use crate::error::{AppError, AppResult};
-use crate::schema::ApiSchema;
+use crate::{error::AppResult, middleware::auth::jwt::JwtService, schema::ApiSchema};
+use async_graphql::http::GraphiQLSource;
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::response::Html;
-use axum::{extract::Extension, response::IntoResponse};
+use axum::{
+    extract::Extension,
+    http::{HeaderMap, header},
+    response::{Html, IntoResponse},
+};
+use std::sync::Arc;
 
-// Handler for GraphQL POST requests with error handling
+use super::auth::AuthService;
+
+// Handler for GraphQL POST requests with authentication
 pub async fn graphql_handler(
     schema: Extension<ApiSchema>,
+    jwt_service: Extension<Arc<JwtService>>,
+    auth_service: Extension<Arc<AuthService>>,
+    headers: HeaderMap,
     req: GraphQLRequest,
 ) -> AppResult<GraphQLResponse> {
-    let response = schema.execute(req.into_inner()).await;
+    // Create a new request builder for modifying the GraphQL request
+    let mut req_builder = req.into_inner();
 
-    // Check for GraphQL errors and convert to AppError if needed
-    if response.is_err() {
-        return Err(AppError::GraphQLError(response.errors[0].clone().into()));
+    // IMPORTANT: Add auth service to the request context
+    req_builder = req_builder.data(Arc::clone(&auth_service));
+
+    // Check for authorization header
+    if let Some(auth_header) = headers.get(header::AUTHORIZATION) {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if auth_str.starts_with("Bearer ") {
+                let token = &auth_str["Bearer ".len()..];
+
+                // Validate the token
+                if let Ok(claims) = jwt_service.validate_token(token) {
+                    // Add the claims to the request data
+                    req_builder = req_builder.data(claims);
+                }
+            }
+        }
     }
+
+    // Execute the GraphQL request
+    let response = schema.execute(req_builder).await;
 
     Ok(response.into())
 }
 
 // Handler for GraphQL playground UI
 pub async fn graphql_playground() -> impl IntoResponse {
-    axum::response::Html(async_graphql::http::playground_source(
-        async_graphql::http::GraphQLPlaygroundConfig::new("/graphql"),
-    ))
+    Html(GraphiQLSource::build().endpoint("/graphql").finish())
 }
 
 // Simple health check endpoint

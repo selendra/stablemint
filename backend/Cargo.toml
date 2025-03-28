@@ -34,3 +34,6 @@ tower-http = { version = "0.6.2", features = [
 ] }
 
 surrealdb = { version = "2.2.1", features = ["kv-mem"] }
+jsonwebtoken = "9.3.1"
+argon2 = "0.5.3"
+hex = "0.4.3"
