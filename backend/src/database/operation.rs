@@ -3,13 +3,13 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-pub struct Repository<'a, T> {
+pub struct DbService<'a, T> {
     db: &'a Database,
     table_name: String,
     _phantom: PhantomData<T>,
 }
 
-impl<'a, T> Repository<'a, T>
+impl<'a, T> DbService<'a, T>
 where
     T: Clone + Serialize + for<'de> Deserialize<'de> + Send + Sync + 'static,
 {
@@ -137,7 +137,7 @@ mod surreal_tests {
         create_db_pool().await.unwrap()
     }
 
-    async fn cleanup(repo: &Repository<'_, TestUser>) -> Result<()> {
+    async fn cleanup(repo: &DbService<'_, TestUser>) -> Result<()> {
         // Delete all test records to clean up
         let sql = format!("DELETE FROM {}", repo.table_name);
         repo.db.query(sql).await?;
@@ -147,7 +147,7 @@ mod surreal_tests {
     #[tokio::test]
     async fn test_create_record() {
         let db = setup_db().await;
-        let repo = Repository::<TestUser>::new(&db, "test_user");
+        let repo = DbService::<TestUser>::new(&db, "test_user");
 
         // Create a test user
         let user = TestUser {
@@ -175,7 +175,7 @@ mod surreal_tests {
     #[tokio::test]
     async fn test_update_record() {
         let db = setup_db().await;
-        let user_repo = Repository::<TestUser>::new(&db, "test_users");
+        let user_repo = DbService::<TestUser>::new(&db, "test_users");
 
         // Clean up any existing test data
         let cleanup_sql = "DELETE FROM test_users";
@@ -216,7 +216,7 @@ mod surreal_tests {
     #[tokio::test]
     async fn test_delete_record() {
         let db = setup_db().await;
-        let repo = Repository::<TestUser>::new(&db, "delete_users");
+        let repo = DbService::<TestUser>::new(&db, "delete_users");
 
         // Clean up any existing test data
         let cleanup_sql = "DELETE FROM delete_users";
@@ -248,7 +248,7 @@ mod surreal_tests {
     #[tokio::test]
     async fn test_get_record_by_id() {
         let db = setup_db().await;
-        let repo = Repository::<TestUser>::new(&db, "test_users");
+        let repo = DbService::<TestUser>::new(&db, "test_users");
 
         // Clean up any existing test data
         let cleanup_sql = "DELETE FROM test_users";
@@ -283,7 +283,7 @@ mod surreal_tests {
     #[tokio::test]
     async fn test_get_records_by_field() {
         let db = setup_db().await;
-        let repo = Repository::<TestUser>::new(&db, "test_users");
+        let repo = DbService::<TestUser>::new(&db, "test_users");
 
         // Create several test users
         let users = vec![
