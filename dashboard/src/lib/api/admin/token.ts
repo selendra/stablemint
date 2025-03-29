@@ -6,13 +6,22 @@ import {
 	TokenInfo,
 } from "../types";
 
+export interface CreateTokenResponse {
+	tokenAddress: string;
+	success: boolean;
+}
+
 export async function createLoyaltyToken(body: {
+	token_id: string;
 	name: string;
 	symbol: string;
-	tokenOwner: number;
+	tokenOwner: string;
 	tokensPerStableCoin: number;
 }) {
-	const request = await post<MintResponse>(adminPath(`/token/create`), body);
+	const request = await post<CreateTokenResponse>(
+		adminPath(`/token/create`),
+		body
+	);
 
 	if (request.isErr()) {
 		throw request.error;

@@ -3,7 +3,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { Token } from "@/lib/api/token";
 import React from "react";
 
-export default function EachRejectedToken({ token }: { token: Token }) {
+export default function EachCreatedToken({ token }: { token: Token }) {
 	return (
 		<TableRow>
 			<TableCell className="font-normal">{token?.name ?? "Unknown"}</TableCell>
@@ -38,7 +38,7 @@ export default function EachRejectedToken({ token }: { token: Token }) {
 			<TableCell>
 				<div className="flex gap-2 place-content-end">
 					<Button disabled>Approve</Button>
-					<Button disabled variant={"destructive"}>
+					<Button variant={"destructive"} disabled>
 						Reject
 					</Button>
 				</div>
