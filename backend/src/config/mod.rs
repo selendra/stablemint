@@ -45,3 +45,17 @@ impl Server {
         })
     }
 }
+
+pub struct SentryConfig {
+    pub sentry_dsn: String,
+}
+
+impl SentryConfig {
+    pub fn from_env() -> Result<Self> {
+        dotenv().ok();
+
+        Ok(Self {
+            sentry_dsn: env::var("SENTRY_DSN").unwrap_or_else(|_| "".to_string()),
+        })
+    }
+}

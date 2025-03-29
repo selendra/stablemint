@@ -1,56 +1,31 @@
 use anyhow::Context;
 use backend::{
-    config::{DatabaseConfig, Server},
-    database::operation::{Database, DbService},
-    error::{AppError, AppErrorExt},
+    config::Server,
+    database::{db_connect::initialize_db, operation::DbService},
+    errors::{AppError, AppErrorExt},
     handlers::auth::AuthService,
     models::user::User,
     routes,
     schema::create_schema,
+    types::DB_ARC,
 };
 use std::sync::Arc;
-use surrealdb::opt::auth::Root;
+
 extern crate lazy_static;
-use tokio::{net::TcpListener, sync::OnceCell};
+use tokio::net::TcpListener;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber::FmtSubscriber;
 
-static DB_ARC: OnceCell<Arc<Database>> = OnceCell::const_new();
-
-pub async fn initialize_db() -> Result<Arc<Database>, AppError> {
-    let config = DatabaseConfig::from_env().context("Failed to load database configuration")?;
-
-    tracing::debug!("Connecting to SurrealDB: {}", config.endpoint);
-
-    // let db = Surreal::new::<Ws>(&config.endpoint)
-    //     .await
-    //     .context("Failed to connect to SurrealDB")?;
-    let db = surrealdb::engine::any::connect(&config.endpoint)
-        .await
-        .context("Failed to connect to SurrealDB")?;
-
-    // Authenticate to the database
-    db.signin(Root {
-        username: &config.username,
-        password: &config.password,
-    })
-    .await
-    .context("Failed to authenticate to SurrealDB")?;
-
-    // Use a single operation to select namespace and database
-    db.use_ns(&config.namespace)
-        .use_db(&config.database)
-        .await
-        .context("Failed to select namespace and database")?;
-    tracing::info!("Successfully connected to SurrealDB");
-
-    let database = Database { connection: db };
-
-    Ok(Arc::new(database))
-}
-
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
+    let _guard = sentry::init((
+        "",
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            ..Default::default()
+        },
+    ));
+
     // Initialize the logger
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
