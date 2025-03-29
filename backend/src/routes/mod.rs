@@ -6,7 +6,12 @@ use crate::{
     middleware::{debug::debug_extensions, error::error_handling_middleware},
     schema::ApiSchema,
 };
-use axum::{Router, extract::Extension, middleware, routing::get};
+use axum::{
+    Router,
+    extract::Extension,
+    middleware::{self},
+    routing::get,
+};
 use std::{sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{

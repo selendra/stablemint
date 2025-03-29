@@ -1,8 +1,8 @@
-use anyhow::Context;
+use anyhow::{Context, Result};
 use backend::{
-    config::Server,
+    config::{SentryConfig, Server},
     database::{db_connect::initialize_db, operation::DbService},
-    errors::{AppError, AppErrorExt},
+    errors::AppError,
     handlers::auth::AuthService,
     models::user::User,
     routes,
@@ -10,16 +10,16 @@ use backend::{
     types::DB_ARC,
 };
 use std::sync::Arc;
-
-extern crate lazy_static;
 use tokio::net::TcpListener;
 use tracing::{Level, error, info, warn};
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
+    // Load and initialize sentry
+    let sentry_config = SentryConfig::from_env().context("Failed to load sentry configuration")?;
     let _guard = sentry::init((
-        "",
+        sentry_config.sentry_dsn,
         sentry::ClientOptions {
             release: sentry::release_name!(),
             ..Default::default()
@@ -30,18 +30,16 @@ async fn main() -> Result<(), AppError> {
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .finish();
+
+    let subscriber = subscriber.with(sentry_tracing::layer());
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
     info!("Starting application at {}", chrono::Utc::now());
 
-    // Load configuration with better error handling
-    let config = Server::from_env()
-        .context("Failed to load server configuration")
-        .config_err()?;
+    // Load server configuration
+    let config = Server::from_env().context("Failed to load server configuration")?;
 
-    info!("Configuration loaded successfully");
-
-    // Initialize the database and store it in OnceCell
+    // Initialize the database connection
     let db_arc = DB_ARC
         .get_or_init(|| async {
             initialize_db().await.unwrap_or_else(|e| {
@@ -51,12 +49,9 @@ async fn main() -> Result<(), AppError> {
         })
         .await;
 
-    // Create DB service for users
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
 
-    info!("Database connection established");
-
-    // Set up auth service with database
+    // Setup authentication service
     let jwt_secret = std::env::var("JWT_SECRET")
         .unwrap_or_else(|_| {
             warn!("JWT_SECRET not set, using fallback secret (not secure for production)");
@@ -66,31 +61,23 @@ async fn main() -> Result<(), AppError> {
 
     let auth_service = Arc::new(AuthService::new(&jwt_secret).with_db(user_db));
 
-    info!("Authentication service initialized with database");
-
     // Create GraphQL schema
     let schema = create_schema(Some(Arc::clone(&auth_service)));
-    info!("GraphQL schema created");
 
-    // Build the application with routes
+    // Configure application routes
     let app = routes::create_routes(schema, auth_service);
-    info!("Application routes configured");
 
-    // Set up server address
+    // Bind server to address and start it
     let address = format!("{}:{}", config.address, config.port);
     let listener = TcpListener::bind(&address)
         .await
-        .context(format!("Failed to bind to address: {}", address))
-        .server_err()?;
+        .context(format!("Failed to bind to address: {}", address))?;
 
     info!("GraphQL playground available at: http://{}", address);
 
-    // Start the server with graceful error handling
+    // Start server with graceful error handling
     info!("Server starting");
-    axum::serve(listener, app)
-        .await
-        .context("Server error")
-        .server_err()?;
+    axum::serve(listener, app).await.context("Server error")?;
 
     Ok(())
 }

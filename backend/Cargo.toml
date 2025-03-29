@@ -19,7 +19,6 @@ uuid = { version = "1.16.0", features = ["v4", "serde"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 
 axum = "0.8.1"
-# axum-csp = "" Content-Security-Policy  
 async-trait = "0.1.88"
 async-graphql-axum = "7.0.16"
 async-graphql = { version = "7.0.16", features = ["chrono"] }

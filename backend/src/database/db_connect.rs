@@ -1,5 +1,4 @@
 use crate::{config::DatabaseConfig, errors::AppError, types::Database};
-extern crate lazy_static;
 
 use anyhow::Context;
 use std::sync::Arc;
@@ -9,10 +8,6 @@ pub async fn initialize_db() -> Result<Arc<Database>, AppError> {
     let config = DatabaseConfig::from_env().context("Failed to load database configuration")?;
 
     tracing::debug!("Connecting to SurrealDB: {}", config.endpoint);
-
-    // let db = Surreal::new::<Ws>(&config.endpoint)
-    //     .await
-    //     .context("Failed to connect to SurrealDB")?;
     let db = surrealdb::engine::any::connect(&config.endpoint)
         .await
         .context("Failed to connect to SurrealDB")?;
