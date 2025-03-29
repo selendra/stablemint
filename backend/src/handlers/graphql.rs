@@ -1,4 +1,4 @@
-use crate::{error::AppResult, middleware::auth::jwt::JwtService, schema::ApiSchema};
+use crate::{errors::AppResult, middleware::auth::jwt::JwtService, schema::ApiSchema};
 use async_graphql::http::GraphiQLSource;
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{

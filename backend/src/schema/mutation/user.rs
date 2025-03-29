@@ -1,5 +1,5 @@
 use crate::{
-    error::AppError,
+    errors::AppError,
     handlers::auth::AuthService,
     models::user::{AuthResponse, LoginInput, RegisterInput},
 };

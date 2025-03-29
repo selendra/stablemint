@@ -1,15 +1,18 @@
-use anyhow::{Context, Result};
+use crate::{config::DatabaseConfig, errors::AppError, types::Database};
+extern crate lazy_static;
+
+use anyhow::Context;
 use std::sync::Arc;
 use surrealdb::opt::auth::Root;
 
-use crate::{config::DatabaseConfig, types::Database};
-
-pub async fn create_db_pool() -> Result<Database> {
+pub async fn initialize_db() -> Result<Arc<Database>, AppError> {
     let config = DatabaseConfig::from_env().context("Failed to load database configuration")?;
 
     tracing::debug!("Connecting to SurrealDB: {}", config.endpoint);
 
-    // Connect to the database
+    // let db = Surreal::new::<Ws>(&config.endpoint)
+    //     .await
+    //     .context("Failed to connect to SurrealDB")?;
     let db = surrealdb::engine::any::connect(&config.endpoint)
         .await
         .context("Failed to connect to SurrealDB")?;
@@ -27,8 +30,9 @@ pub async fn create_db_pool() -> Result<Database> {
         .use_db(&config.database)
         .await
         .context("Failed to select namespace and database")?;
+    tracing::info!("Successfully connected to SurrealDB");
 
-    tracing::info!("Successfully connected to SurrealDB at {}", config.endpoint);
+    let database = Database { connection: db };
 
-    Ok(Arc::new(db))
+    Ok(Arc::new(database))
 }

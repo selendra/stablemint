@@ -7,7 +7,7 @@ use axum::{
 use std::time::Instant;
 use tracing::{error, info};
 
-use crate::error::{AppError, ErrorResponse};
+use crate::errors::{AppError, ErrorResponse};
 
 // Middleware to handle errors and log requests
 pub async fn error_handling_middleware(

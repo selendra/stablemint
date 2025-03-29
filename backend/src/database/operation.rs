@@ -3,11 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use surrealdb::engine::any::Any;
 
-pub struct Database {
-    // We'll use the wrapped SurrealDB connection here
-    // This is a placeholder that you'd replace with your actual implementation
-    pub connection: surrealdb::Surreal<Any>,
-}
+use crate::types::Database;
 
 impl Database {
     pub async fn new(connection_url: &str) -> Result<Self> {

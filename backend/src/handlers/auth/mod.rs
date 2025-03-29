@@ -1,6 +1,6 @@
 use crate::{
     database::operation::DbService,
-    error::{AppError, AppResult},
+    errors::{AppError, AppResult},
     middleware::auth::{
         jwt::JwtService,
         password::{self},

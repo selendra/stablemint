@@ -1,5 +1,5 @@
 use crate::{
-    error::AppError, handlers::auth::AuthService, middleware::auth::jwt::Claims,
+    errors::AppError, handlers::auth::AuthService, middleware::auth::jwt::Claims,
     models::user::UserProfile,
 };
 use async_graphql::{Context, Object, Result};
