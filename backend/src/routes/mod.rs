@@ -3,7 +3,7 @@ use crate::{
         auth::AuthService,
         graphql::{graphql_handler, graphql_playground, health_check},
     },
-    middleware::{auth::jwt::JwtService, error::error_handling_middleware},
+    middleware::{debug::debug_extensions, error::error_handling_middleware},
     schema::ApiSchema,
 };
 use axum::{Router, extract::Extension, middleware, routing::get};
@@ -17,19 +17,9 @@ use tower_http::{
 };
 
 // Create application routes with middleware
-pub fn create_routes(schema: ApiSchema) -> Router {
-    // Create auth services with proper error handling
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| {
-            tracing::warn!("JWT_SECRET not set, using fallback secret (not secure for production)");
-            "your_fallback_secret_key_for_development_only".to_string()
-        })
-        .into_bytes();
-
-    let jwt_service = Arc::new(JwtService::new(&jwt_secret));
-    let auth_service = Arc::new(AuthService::new(&jwt_secret));
-
-    tracing::info!("Authentication services initialized");
+pub fn create_routes(schema: ApiSchema, auth_service: Arc<AuthService>) -> Router {
+    // Create JWT service
+    let jwt_service = auth_service.get_jwt_service();
 
     // Define global middleware stack
     let middleware_stack = ServiceBuilder::new()
@@ -55,8 +45,9 @@ pub fn create_routes(schema: ApiSchema) -> Router {
         .route("/", get(graphql_playground))
         .route("/health", get(health_check))
         .route("/graphql", get(graphql_playground).post(graphql_handler))
-        .layer(Extension(Arc::clone(&auth_service))) // Make Auth service available first
-        .layer(Extension(Arc::clone(&jwt_service))) // Make JWT service available
+        .layer(middleware::from_fn(debug_extensions)) // Add debug middleware first
+        .layer(Extension(Arc::clone(&auth_service))) // Make Auth service available
+        .layer(Extension(jwt_service)) // Make JWT service available
         .layer(Extension(schema)) // Extension middleware for the schema
         .layer(middleware_stack) // Attach middleware stack to routes
         .layer(middleware::from_fn(error_handling_middleware)) // Apply custom error handling middleware

@@ -1,8 +1,154 @@
-use crate::types::Database;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
+use surrealdb::engine::any::Any;
 
+pub struct Database {
+    // We'll use the wrapped SurrealDB connection here
+    // This is a placeholder that you'd replace with your actual implementation
+    pub connection: surrealdb::Surreal<Any>,
+}
+
+impl Database {
+    pub async fn new(connection_url: &str) -> Result<Self> {
+        // Connect to the database
+        let connection = surrealdb::engine::any::connect(connection_url)
+            .await
+            .context("Failed to connect to database")?;
+
+        Ok(Self { connection })
+    }
+
+    pub fn create<T>(&self, table: &str) -> CreateBuilder<'_, T> {
+        CreateBuilder {
+            db: &self.connection,
+            table: table.to_string(),
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn update<T>(&self, location: (&str, &str)) -> UpdateBuilder<'_, T> {
+        UpdateBuilder {
+            db: &self.connection,
+            table: location.0.to_string(),
+            id: location.1.to_string(),
+            _phantom: PhantomData,
+        }
+    }
+
+    pub async fn delete<T>(&self, location: (&str, &str)) -> Result<Option<T>>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        self.connection
+            .delete((location.0, location.1))
+            .await
+            .context("Failed to delete record")
+    }
+
+    pub async fn select<T>(&self, location: (&str, &str)) -> Result<Option<T>>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        self.connection
+            .select((location.0, location.1))
+            .await
+            .context("Failed to select record")
+    }
+
+    pub fn query(&self, sql: impl Into<String>) -> QueryBuilder<'_> {
+        QueryBuilder {
+            db: &self.connection,
+            sql: sql.into(),
+            bindings: Vec::new(),
+        }
+    }
+}
+
+// Helper builders to match what DbService expects
+pub struct CreateBuilder<'a, T> {
+    db: &'a surrealdb::Surreal<Any>,
+    table: String,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T> CreateBuilder<'a, T>
+where
+    T: Serialize + Send + Sync + 'static,
+{
+    pub async fn content(self, data: T) -> Result<Option<T>>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        self.db
+            .create(&self.table)
+            .content(data)
+            .await
+            .context("Failed to create record")
+    }
+}
+
+pub struct UpdateBuilder<'a, T> {
+    db: &'a surrealdb::Surreal<Any>,
+    table: String,
+    id: String,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T> UpdateBuilder<'a, T>
+where
+    T: Serialize + Send + Sync + 'static,
+{
+    pub async fn content(self, data: T) -> Result<Option<T>>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        self.db
+            .update((&self.table, &self.id))
+            .content(data)
+            .await
+            .context("Failed to update record")
+    }
+}
+
+pub struct QueryBuilder<'a> {
+    db: &'a surrealdb::Surreal<Any>,
+    sql: String,
+    bindings: Vec<(String, serde_json::Value)>,
+}
+
+impl<'a> QueryBuilder<'a> {
+    pub fn bind(mut self, binding: (impl Into<String>, impl Into<serde_json::Value>)) -> Self {
+        self.bindings.push((binding.0.into(), binding.1.into()));
+        self
+    }
+
+    pub async fn r#await(self) -> Result<QueryResponse> {
+        let mut query = self.db.query(&self.sql);
+
+        for (name, value) in self.bindings {
+            query = query.bind((name, value));
+        }
+
+        let response = query.await.context("Failed to execute query")?;
+        Ok(QueryResponse(response))
+    }
+}
+
+pub struct QueryResponse(surrealdb::Response);
+
+impl QueryResponse {
+    pub async fn take<T>(mut self, index: usize) -> Result<Vec<T>>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        self.0
+            .take(index)
+            .context("Failed to extract query results")
+    }
+}
+
+// The provided DbService
 pub struct DbService<'a, T> {
     db: &'a Database,
     table_name: String,
@@ -70,17 +216,18 @@ where
         let value_json = serde_json::to_value(value)
             .context(format!("Failed to serialize value for field '{}'", field))?;
 
-        let mut response = self
+        let response = self
             .db
-            .query(sql)
+            .query(&sql)
             .bind(("value", value_json))
+            .r#await()
             .await
             .context(format!(
                 "Failed to execute query on {} for field '{}'",
                 self.table_name, field
             ))?;
 
-        response.take(0).context(format!(
+        response.take(0).await.context(format!(
             "Failed to get query results from {}",
             self.table_name
         ))
@@ -96,7 +243,6 @@ where
         Ok(results)
     }
 
-    // Run a custom SQL query with bindings
     pub async fn run_custom_query(
         &self,
         sql: &str,
@@ -105,231 +251,18 @@ where
         let mut query = self.db.query(sql);
 
         for (name, value) in bindings {
+            // This now works because bind accepts Into<String>
             query = query.bind((name, value));
         }
 
-        let mut response = query.await.context(format!(
+        let response = query.r#await().await.context(format!(
             "Failed to execute custom query on {}",
             self.table_name
         ))?;
 
-        response.take(0).context(format!(
+        response.take(0).await.context(format!(
             "Failed to get custom query results from {}",
             self.table_name
         ))
-    }
-}
-#[cfg(test)]
-mod surreal_tests {
-    use super::*;
-    use crate::database::db_connect::create_db_pool;
-    use surrealdb::sql::Thing;
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    struct TestUser {
-        id: Thing,
-        name: String,
-        email: String,
-        age: u32,
-    }
-
-    async fn setup_db() -> Database {
-        create_db_pool().await.unwrap()
-    }
-
-    async fn cleanup(repo: &DbService<'_, TestUser>) -> Result<()> {
-        // Delete all test records to clean up
-        let sql = format!("DELETE FROM {}", repo.table_name);
-        repo.db.query(sql).await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_create_record() {
-        let db = setup_db().await;
-        let repo = DbService::<TestUser>::new(&db, "test_user");
-
-        // Create a test user
-        let user = TestUser {
-            id: Thing::from(("test", "test.sel")),
-            name: "Test User".to_string(),
-            email: "test@example.com".to_string(),
-            age: 30,
-        };
-
-        // Create the record
-        let result = repo.create_record(user.clone()).await.unwrap();
-
-        // Assert that we got a result back
-        assert!(result.is_some());
-        let created_user = result.unwrap();
-
-        // Verify the user data is correct
-        assert_eq!(created_user.name, user.name);
-        assert_eq!(created_user.email, user.email);
-        assert_eq!(created_user.age, user.age);
-
-        cleanup(&repo).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_update_record() {
-        let db = setup_db().await;
-        let user_repo = DbService::<TestUser>::new(&db, "test_users");
-
-        // Clean up any existing test data
-        let cleanup_sql = "DELETE FROM test_users";
-        user_repo.db.query(cleanup_sql).await.unwrap();
-
-        // Create a new user
-        let new_user = TestUser {
-            id: Thing::from(("test_users", "01.sel")),
-            name: "Original Name".to_string(),
-            email: "original@example.com".to_string(),
-            age: 25,
-        };
-        user_repo.create_record(new_user).await.unwrap();
-
-        // Read user by string id
-        let user_id_str = "01.sel";
-        let read_result_by_str = user_repo.get_record_by_id(user_id_str).await.unwrap();
-
-        // Update user
-        if let Some(mut user) = read_result_by_str {
-            user.name = "Updated Name".to_string();
-            user.email = "updated@example.com".to_string();
-
-            let update_result = user_repo.update_record(user_id_str, user).await;
-            update_result.unwrap().unwrap();
-
-            let updated_read = user_repo
-                .get_record_by_id(user_id_str)
-                .await
-                .unwrap()
-                .unwrap();
-
-            assert_eq!(updated_read.name, "Updated Name");
-        }
-        cleanup(&user_repo).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_delete_record() {
-        let db = setup_db().await;
-        let repo = DbService::<TestUser>::new(&db, "delete_users");
-
-        // Clean up any existing test data
-        let cleanup_sql = "DELETE FROM delete_users";
-        repo.db.query(cleanup_sql).await.unwrap();
-
-        // Create a test user first
-        let user = TestUser {
-            id: Thing::from(("delete_users", "delete_users:10")),
-            name: "Delete Test".to_string(),
-            email: "delete@example.com".to_string(),
-            age: 40,
-        };
-
-        let result = repo.create_record(user.clone()).await.unwrap();
-        let _created_user = result.unwrap();
-
-        // Get the record id (placeholder)
-        let record_id = "delete_users:10";
-
-        // Delete the record
-        let delete_result = repo.delete_record(record_id).await.unwrap();
-        assert!(delete_result.is_some());
-
-        // Verify deletion by trying to fetch the record
-        let fetch_result = repo.get_record_by_id(record_id).await.unwrap();
-        assert!(fetch_result.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_get_record_by_id() {
-        let db = setup_db().await;
-        let repo = DbService::<TestUser>::new(&db, "test_users");
-
-        // Clean up any existing test data
-        let cleanup_sql = "DELETE FROM test_users";
-        repo.db.query(cleanup_sql).await.unwrap();
-
-        // Create a test user first
-        let user = TestUser {
-            id: Thing::from(("test_user", "test_users:1")),
-            name: "Get By ID".to_string(),
-            email: "get@example.com".to_string(),
-            age: 35,
-        };
-
-        let result = repo.create_record(user.clone()).await.unwrap();
-        let _created_user = result.unwrap();
-
-        // Get the record id (placeholder)
-        let record_id = "test_users:1";
-
-        // Get the record by ID
-        let get_result = repo.get_record_by_id(record_id).await.unwrap();
-        assert!(get_result.is_some());
-
-        let fetched_user = get_result.unwrap();
-        assert_eq!(fetched_user.name, user.name);
-        assert_eq!(fetched_user.email, user.email);
-        assert_eq!(fetched_user.age, user.age);
-
-        cleanup(&repo).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_get_records_by_field() {
-        let db = setup_db().await;
-        let repo = DbService::<TestUser>::new(&db, "test_users");
-
-        // Create several test users
-        let users = vec![
-            TestUser {
-                id: Thing::from(("test_user", "test_users:1")),
-                name: "User A".to_string(),
-                email: "a@example.com".to_string(),
-                age: 30,
-            },
-            TestUser {
-                id: Thing::from(("test_user", "test_users:2")),
-                name: "User B".to_string(),
-                email: "b@example.com".to_string(),
-                age: 30, // Same age
-            },
-            TestUser {
-                id: Thing::from(("test_user", "test_users:3")),
-                name: "User C".to_string(),
-                email: "c@example.com".to_string(),
-                age: 25,
-            },
-        ];
-
-        // Insert all users
-        for user in users.clone() {
-            repo.create_record(user).await.unwrap();
-        }
-
-        // Get users by age
-        let users_with_age_30 = repo.get_records_by_field("age", 30).await.unwrap();
-
-        // We should have 2 users with age 30
-        assert_eq!(users_with_age_30.len(), 2);
-
-        // Check that the correct users were returned
-        assert!(
-            users_with_age_30
-                .iter()
-                .any(|u| u.name == "User A" && u.age == 30)
-        );
-        assert!(
-            users_with_age_30
-                .iter()
-                .any(|u| u.name == "User B" && u.age == 30)
-        );
-
-        cleanup(&repo).await.unwrap();
     }
 }

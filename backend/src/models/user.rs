@@ -1,19 +1,53 @@
 use async_graphql::{InputObject, SimpleObject};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
-    pub id: Uuid,
+    #[serde(default = "User::generate_id")]
+    pub id: Thing,
     pub name: String,
     pub username: String,
     pub email: String,
     pub password: String,
     pub address: String,
     pub private_key: String,
+    #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
+    #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
+}
+
+impl User {
+    // Helper to generate a new ID
+    fn generate_id() -> Thing {
+        Thing::from(("users".to_string(), Uuid::new_v4().to_string()))
+    }
+
+    // Create a new user with default values for fields that aren't provided
+    pub fn new(
+        name: String,
+        username: String,
+        email: String,
+        password: String,
+        address: String,
+        private_key: String,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Self::generate_id(),
+            name,
+            username,
+            email,
+            password,
+            address,
+            private_key,
+            created_at: now,
+            updated_at: now,
+        }
+    }
 }
 
 #[derive(Debug, SimpleObject, Serialize, Deserialize)]
@@ -30,7 +64,7 @@ pub struct UserProfile {
 impl From<User> for UserProfile {
     fn from(user: User) -> Self {
         Self {
-            id: user.id.to_string(),
+            id: user.id.id.to_string(),
             name: user.name,
             username: user.username,
             email: user.email,
