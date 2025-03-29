@@ -62,7 +62,7 @@ async fn main() -> Result<(), AppError> {
     let auth_service = Arc::new(AuthService::new(&jwt_secret).with_db(user_db));
 
     // Create GraphQL schema
-    let schema = create_schema(Some(Arc::clone(&auth_service)));
+    let schema = create_schema();
 
     // Configure application routes
     let app = routes::create_routes(schema, auth_service);
