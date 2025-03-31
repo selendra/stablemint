@@ -15,19 +15,6 @@ pub struct DatabaseConfig {
 }
 
 impl DatabaseConfig {
-    /// Create a new database configuration with the provided parameters
-    ///
-    /// # Arguments
-    ///
-    /// * `endpoint` - SurrealDB endpoint URL
-    /// * `username` - Username for authentication
-    /// * `password` - Password for authentication
-    /// * `namespace` - SurrealDB namespace
-    /// * `database` - SurrealDB database name
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Self>` - The configured DatabaseConfig or an error
     pub fn new(
         endpoint: impl Into<String>,
         username: impl Into<String>,
@@ -44,19 +31,6 @@ impl DatabaseConfig {
         }
     }
 
-    /// Create a DatabaseConfig from environment variables
-    ///
-    /// # Environment Variables
-    ///
-    /// * `SURREALDB_ENDPOINT` - SurrealDB endpoint URL
-    /// * `SURREALDB_USERNAME` - Username for authentication
-    /// * `SURREALDB_PASSWORD` - Password for authentication
-    /// * `SURREALDB_NAMESPACE` - SurrealDB namespace
-    /// * `SURREALDB_DATABASE` - SurrealDB database name
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Self>` - The configured DatabaseConfig or an error
     pub fn from_env() -> Result<Self> {
         use std::env;
 
