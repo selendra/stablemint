@@ -22,7 +22,12 @@ tower-http = { workspace = true }
 [workspace.dependencies]
 axum = "0.8.1"
 anyhow = "1.0.97"
-serde = "1.0.219"
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+serde = { version = "1.0.219", features = ["derive"] }
 async-graphql-axum = "7.0.16"
 async-graphql = { version = "7.0.16", features = ["chrono"] }
 tower = { version = "0.5.2" }
