@@ -1,21 +1,17 @@
-use async_graphql::{http::GraphiQLSource, EmptyMutation, EmptySubscription, Object, Schema};
+use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, http::GraphiQLSource};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
+    Extension, Router,
     response::{Html, IntoResponse},
     routing::get,
-    Extension, Router,
 };
-use tower_http::{
-    cors::{Any, CorsLayer},
-};
-
+use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
 async fn main() {
     // Create the Schema
-    let schema = Schema::build(Query::default(), EmptyMutation, EmptySubscription)
-        .finish();
-    
+    let schema = Schema::build(Query::default(), EmptyMutation, EmptySubscription).finish();
+
     let router = Router::new()
         .route("/graphql", get(graphql_playground).post(graphql_handler))
         // Add the schema as an extension
@@ -33,9 +29,9 @@ async fn main() {
                     axum::http::Method::OPTIONS,
                 ]),
         );
-    
+
     println!("GraphQL playground available at: http://localhost:8000/graphql");
-    
+
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
     axum::serve(listener, router).await.unwrap();
 }
