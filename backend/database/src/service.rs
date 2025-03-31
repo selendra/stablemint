@@ -306,21 +306,16 @@ where
 
     // Efficiently check if a record exists by ID
     pub async fn record_exists(&self, record_id: &str) -> Result<bool> {
-        let sql = "SELECT count() FROM type::table($table) WHERE id = $id";
-
-        let result: Vec<serde_json::Value> = self
+        let result: Vec<serde_json::Value> = match self
             .db
-            .query(sql)
-            .bind(("table", self.table_name.clone()))
-            .bind(("id", record_id))
-            .execute()
+            .select(&self.table_name, record_id)
             .await
-            .context(format!(
-                "Failed to check if record exists in {}",
-                self.table_name
-            ))?;
+            .context(self.context_msg("read by ID"))?
+        {
+            Some(value) => vec![value],
+            None => Vec::new(),
+        };
 
-        // Parse the count result
         match result.first() {
             Some(value) => {
                 if let Some(count) = value.get("count").and_then(|c| c.as_i64()) {
