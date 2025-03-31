@@ -1,11 +1,12 @@
 use crate::types::Database;
 use anyhow::{Context, Result};
+use dotenv::dotenv;
 use stablemint_error::AppError;
 use std::sync::Arc;
 use surrealdb::{Surreal, engine::any::Any, opt::auth::Root};
 
 /// Configuration for SurrealDB connection
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct DatabaseConfig {
     pub endpoint: String,
     pub username: String,
@@ -33,6 +34,7 @@ impl DatabaseConfig {
 
     pub fn from_env() -> Result<Self> {
         use std::env;
+        dotenv().ok();
 
         Ok(Self {
             endpoint: env::var("SURREALDB_ENDPOINT").context("SURREALDB_ENDPOINT must be set")?,
@@ -59,13 +61,15 @@ async fn connect_and_setup(config: &DatabaseConfig) -> Result<Surreal<Any>> {
         .await
         .context("Failed to connect to SurrealDB")?;
 
-    // Authenticate to the database
-    db.signin(Root {
-        username: &config.username,
-        password: &config.password,
-    })
-    .await
-    .context("Failed to authenticate to SurrealDB")?;
+    if config.endpoint != "memory" {
+        // Authenticate to the database
+        db.signin(Root {
+            username: &config.username,
+            password: &config.password,
+        })
+        .await
+        .context("Failed to authenticate to SurrealDB")?;
+    }
 
     // Use a single operation to select namespace and database
     db.use_ns(&config.namespace)
@@ -80,11 +84,4 @@ async fn connect_and_setup(config: &DatabaseConfig) -> Result<Surreal<Any>> {
     );
 
     Ok(db)
-}
-
-pub async fn test_connection(config: &DatabaseConfig) -> Result<(), AppError> {
-    connect_and_setup(config)
-        .await
-        .map(|_| ())
-        .map_err(|e| AppError::Database(e))
 }
