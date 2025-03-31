@@ -4,34 +4,27 @@ members = [
     "errors",
 ]
 
-[package]
-name = "backend"
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 authors = ["Selendra"]
 
-[dependencies]
-axum = { workspace = true }
-async-graphql = { workspace = true }
-async-graphql-axum = { workspace = true }
-tower = { workspace = true }
-surrealdb = { workspace = true }
-tokio = { workspace = true }
-tower-http = { workspace = true }
-
 [workspace.dependencies]
 axum = "0.8.1"
+dotenv = "0.15.0"
 anyhow = "1.0.97"
 serde_json = "1.0.140"
 thiserror = "2.0.12"
 tracing = "0.1.41"
+tower = "0.5.2"
+async-graphql-axum = "7.0.16"
 
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 serde = { version = "1.0.219", features = ["derive"] }
-async-graphql-axum = "7.0.16"
 async-graphql = { version = "7.0.16", features = ["chrono"] }
-tower = { version = "0.5.2" }
-surrealdb = { version = "2.2.1" }
+surrealdb = { version = "2.2.1", features = ["kv-mem"] }
 tokio = { version = "1.44.1", features = [
     "rt",
     "rt-multi-thread",
