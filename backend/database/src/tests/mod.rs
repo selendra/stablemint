@@ -1,3 +1,5 @@
+pub mod auth;
+
 mod tests {
     use crate::conn::{DatabaseConfig, initialize_db};
     use crate::service::DbService;

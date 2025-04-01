@@ -161,7 +161,7 @@ pub trait Record: Serialize + for<'de> Deserialize<'de> + Send + Sync {
 // The provided DbService
 pub struct DbService<'a, T> {
     db: &'a Database,
-    table_name: String,
+    pub table_name: String,
     _phantom: PhantomData<T>,
 }
 
