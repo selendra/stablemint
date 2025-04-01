@@ -347,57 +347,147 @@ mod tests {
     async fn test_run_custom_query() -> Result<()> {
         let db = setup_test_db().await?;
         let user_service = DbService::<TestUser>::new(&db, "users");
-        
+
         // Create test users with varying ages - make sure to use .await? to handle errors
         let users = vec![
-            TestUser { id: None, name: "Liam".to_string(), email: "liam@example.com".to_string(), age: 21 },
-            TestUser { id: None, name: "Mia".to_string(), email: "mia@example.com".to_string(), age: 23 },
-            TestUser { id: None, name: "Noah".to_string(), email: "noah@example.com".to_string(), age: 25 },
-            TestUser { id: None, name: "Olivia".to_string(), email: "olivia@example.com".to_string(), age: 27 },
+            TestUser {
+                id: None,
+                name: "Liam".to_string(),
+                email: "liam@example.com".to_string(),
+                age: 21,
+            },
+            TestUser {
+                id: None,
+                name: "Mia".to_string(),
+                email: "mia@example.com".to_string(),
+                age: 23,
+            },
+            TestUser {
+                id: None,
+                name: "Noah".to_string(),
+                email: "noah@example.com".to_string(),
+                age: 25,
+            },
+            TestUser {
+                id: None,
+                name: "Olivia".to_string(),
+                email: "olivia@example.com".to_string(),
+                age: 27,
+            },
         ];
-        
+
         let results = user_service.bulk_create_records(users.clone()).await?;
         assert_eq!(
             results.len(),
             users.len(),
             "Should return right number of placeholder results"
         );
-        
+
         // Verify data was created correctly with a simple query
-        let all_users = user_service.run_custom_query("SELECT * FROM users", ()).await?;
+        let all_users = user_service
+            .run_custom_query("SELECT * FROM users", ())
+            .await?;
         assert_eq!(all_users.len(), 4, "Should get 4 users");
-     
+
         // Run a custom query with parameters - use >= and <= to be more certain of results
         #[derive(Serialize)]
         struct AgeFilter {
             min_age: u32,
             max_age: u32,
         }
-        
+
         let params = AgeFilter {
             min_age: 22,
             max_age: 26,
         };
-        
+
         // Use inclusive bounds to be more tolerant
         let filtered_users = user_service
-            .run_custom_query("SELECT * FROM users WHERE age >= $min_age AND age <= $max_age", params)
+            .run_custom_query(
+                "SELECT * FROM users WHERE age >= $min_age AND age <= $max_age",
+                params,
+            )
             .await?;
-        
-        
+
         // Test finding users aged 22-26 (inclusive)
-        assert!(!filtered_users.is_empty(), "Should find at least one user between ages 22 and 26");
-        assert!(filtered_users.iter().any(|u| u.name == "Mia"), "Should find Mia (age 23)");
-        assert!(filtered_users.iter().any(|u| u.name == "Noah"), "Should find Noah (age 25)");
-        
+        assert!(
+            !filtered_users.is_empty(),
+            "Should find at least one user between ages 22 and 26"
+        );
+        assert!(
+            filtered_users.iter().any(|u| u.name == "Mia"),
+            "Should find Mia (age 23)"
+        );
+        assert!(
+            filtered_users.iter().any(|u| u.name == "Noah"),
+            "Should find Noah (age 25)"
+        );
+
         // Test ordering
         let ordered_users = user_service
             .run_custom_query("SELECT * FROM users ORDER BY age DESC LIMIT 2", ())
             .await?;
-        
+
         assert_eq!(ordered_users.len(), 2, "Should get 2 users");
-        assert!(ordered_users[0].age >= ordered_users[1].age, "Should be in descending age order");
-        
+        assert!(
+            ordered_users[0].age >= ordered_users[1].age,
+            "Should be in descending age order"
+        );
+
+        Ok(())
+    }
+
+    // Test the Database query helper functions
+    #[tokio::test]
+    async fn test_database_query_builder() -> Result<()> {
+        let db = setup_test_db().await?;
+
+        // Create some test data first
+        let user_service = DbService::<TestUser>::new(&db, "users");
+        let user = TestUser {
+            id: None,
+            name: "Patricia".to_string(),
+            email: "patricia@example.com".to_string(),
+            age: 31,
+        };
+        let _ = user_service.create_record(user).await?;
+
+        // Test a simple query with the QueryBuilder
+        let results: Vec<TestUser> = db
+            .query("SELECT * FROM users WHERE age > $min_age")
+            .bind(("min_age", 30))
+            .execute()
+            .await?;
+
+        assert!(!results.is_empty(), "Should find users older than 30");
+
+        // Test binding multiple parameters
+        let results: Vec<TestUser> = db
+            .query("SELECT * FROM users WHERE age > $min AND age < $max")
+            .bind(("min", 20))
+            .bind(("max", 40))
+            .execute()
+            .await?;
+
+        assert!(!results.is_empty(), "Should find users between 20 and 40");
+
+        // Test binding params from a struct
+        #[derive(Serialize)]
+        struct AgeRange {
+            min: u32,
+            max: u32,
+        }
+
+        let age_range = AgeRange { min: 20, max: 40 };
+
+        let results: Vec<TestUser> = db
+            .query("SELECT * FROM users WHERE age > $min AND age < $max")
+            .bind_params(age_range)?
+            .execute()
+            .await?;
+
+        assert!(!results.is_empty(), "Should find users between 20 and 40");
+
         Ok(())
     }
 }
