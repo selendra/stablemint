@@ -1,8 +1,8 @@
-// database/src/conn.rs
+pub mod credentials;
 
-use crate::credentials::SecureDatabaseConfig;
 use crate::types::Database;
 use anyhow::Result;
+use credentials::{DatabaseCredentials, SecureDatabaseConfig};
 use stablemint_error::AppError;
 use std::sync::Arc;
 use surrealdb::{Surreal, engine::any::Any, opt::auth::Root};
@@ -36,8 +36,6 @@ impl DatabaseConfig {
 
     /// Convert to the new secure config for enhanced security features
     pub fn to_secure_config(self) -> SecureDatabaseConfig {
-        use crate::credentials::DatabaseCredentials;
-
         let credentials = DatabaseCredentials::new_direct(self.username, self.password);
         SecureDatabaseConfig::new(self.endpoint, credentials, self.namespace, self.database)
     }

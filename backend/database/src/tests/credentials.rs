@@ -1,5 +1,5 @@
 mod credential_tests {
-    use crate::credentials::{
+    use crate::conn::credentials::{
         ConnectionManager, DatabaseCredentials, SecureDatabaseConfig, helpers,
     };
     use anyhow::Result;
