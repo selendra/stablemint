@@ -140,9 +140,11 @@ impl AuthorizationService {
         // Basic permission check
         if !auth_context.has_permission(permission) {
             tracing::warn!(
-                "User {} lacks permission: {}",
-                auth_context.user_id,
-                permission
+                user_id = %auth_context.user_id,
+                permission = %permission,
+                resource_type = %resource.resource_type,
+                resource_id = ?resource.resource_id,
+                "Permission denied - user lacks required permission"
             );
             return Ok(false);
         }
@@ -152,6 +154,14 @@ impl AuthorizationService {
             // If not the owner and no admin permissions, perform additional access control checks
             if owner_id != &auth_context.user_id && !auth_context.has_permission(Permission::Admin)
             {
+                tracing::debug!(
+                    user_id = %auth_context.user_id,
+                    owner_id = %owner_id,
+                    resource_type = %resource.resource_type,
+                    resource_id = %resource_id,
+                    "User is not resource owner, checking explicit access"
+                );
+
                 // Here you could implement more complex ACL checks from the database
                 // For example, check if the user has been granted explicit access to this resource
                 let has_access = self
@@ -164,11 +174,12 @@ impl AuthorizationService {
 
                 if !has_access {
                     tracing::warn!(
-                        "User {} attempted unauthorized access to {}/{} owned by {}",
-                        auth_context.user_id,
-                        resource.resource_type,
-                        resource_id,
-                        owner_id
+                        user_id = %auth_context.user_id,
+                        owner_id = %owner_id,
+                        resource_type = %resource.resource_type,
+                        resource_id = %resource_id,
+                        permission = %permission,
+                        "Access denied - user has no explicit access to resource"
                     );
                     return Ok(false);
                 }
@@ -176,12 +187,12 @@ impl AuthorizationService {
         }
 
         // Log the authorized access
-        tracing::debug!(
-            "User {} authorized for {} on {}/{}",
-            auth_context.user_id,
-            permission,
-            resource.resource_type,
-            resource.resource_id.as_deref().unwrap_or("*")
+        tracing::info!(
+            user_id = %auth_context.user_id,
+            permission = %permission,
+            resource_type = %resource.resource_type,
+            resource_id = ?resource.resource_id.as_deref().unwrap_or("*"),
+            "Access authorized"
         );
 
         Ok(true)
@@ -207,7 +218,9 @@ impl AuthorizationService {
             .await
             .map_err(|e| {
                 tracing::error!("Database error checking resource access: {}", e);
-                AppError::Database(e)
+                AppError::AccessDenied(
+                    "Access denied - user has no explicit access to resource".to_string(),
+                )
             })?;
 
         Ok(!result.is_empty())
@@ -394,7 +407,18 @@ where
         self.service
             .get_records_by_field(field, value)
             .await
-            .map_err(AppError::Database)
+            .map_err(|e| {
+                // Log the error with context
+                tracing::error!(
+                    error = %e,
+                    field = %field,
+                    table = %self.service.table_name(),
+                    user_id = %auth_context.user_id,
+                    "Failed to query records by field"
+                );
+                // Convert to AppError::Database properly
+                AppError::Database(anyhow::anyhow!("{}", e))
+            })
     }
 
     /// Run a custom query with authorization check

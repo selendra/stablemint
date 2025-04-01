@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+hashicorp_vault = { version = "2.1.1", optional = true }
+
 surrealdb = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
@@ -12,3 +14,9 @@ serde_json = { workspace = true }
 stablemint-error = { workspace = true }
 tracing = { workspace = true }
 dotenv = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+default = []
+vault = ["hashicorp_vault"]  # Enable this feature for vault support
+hashicorp = ["vault"] # More specific vault implementation

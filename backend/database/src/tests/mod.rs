@@ -1,8 +1,9 @@
 pub mod auth;
+pub mod credentials;
 
 mod tests {
     use crate::conn::{DatabaseConfig, initialize_db};
-    use crate::service::DbService;
+    use crate::services::DbService;
     use crate::types::{DB_ARC, Database};
     use anyhow::Result;
     use serde::{Deserialize, Serialize};

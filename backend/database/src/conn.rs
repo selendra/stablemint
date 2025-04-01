@@ -2,7 +2,7 @@
 
 use crate::credentials::SecureDatabaseConfig;
 use crate::types::Database;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use stablemint_error::AppError;
 use std::sync::Arc;
 use surrealdb::{Surreal, engine::any::Any, opt::auth::Root};
@@ -57,33 +57,74 @@ pub async fn initialize_secure_db(config: SecureDatabaseConfig) -> Result<Arc<Da
 }
 
 async fn connect_and_setup(config: &DatabaseConfig) -> Result<Surreal<Any>> {
-    tracing::debug!("Connecting to SurrealDB: {}", config.endpoint);
+    tracing::info!(
+        endpoint = %config.endpoint,
+        namespace = %config.namespace,
+        database = %config.database,
+        "Connecting to SurrealDB"
+    );
 
     // Connect to the database
     let db = surrealdb::engine::any::connect(&config.endpoint)
         .await
-        .context("Failed to connect to SurrealDB")?;
+        .map_err(|e| {
+            tracing::error!(
+                error = %e,
+                endpoint = %config.endpoint,
+                "Failed to connect to SurrealDB"
+            );
+            anyhow::anyhow!("Failed to connect to SurrealDB: {}", e)
+        })?;
 
     if config.endpoint != "memory" {
         // Authenticate to the database
+        tracing::debug!(
+            endpoint = %config.endpoint,
+            username = %config.username,
+            "Authenticating to SurrealDB"
+        );
+
         db.signin(Root {
             username: &config.username,
             password: &config.password,
         })
         .await
-        .context("Failed to authenticate to SurrealDB")?;
+        .map_err(|e| {
+            tracing::error!(
+                error = %e,
+                endpoint = %config.endpoint,
+                username = %config.username,
+                "Authentication failed"
+            );
+            anyhow::anyhow!("Failed to authenticate to SurrealDB: {}", e)
+        })?;
     }
 
     // Use a single operation to select namespace and database
+    tracing::debug!(
+        namespace = %config.namespace,
+        database = %config.database,
+        "Selecting namespace and database"
+    );
+
     db.use_ns(&config.namespace)
         .use_db(&config.database)
         .await
-        .context("Failed to select namespace and database")?;
+        .map_err(|e| {
+            tracing::error!(
+                error = %e,
+                namespace = %config.namespace,
+                database = %config.database,
+                "Failed to select namespace and database"
+            );
+            anyhow::anyhow!("Failed to select namespace and database: {}", e)
+        })?;
 
     tracing::info!(
-        "Successfully connected to SurrealDB (ns: {}, db: {})",
-        config.namespace,
-        config.database
+        endpoint = %config.endpoint,
+        namespace = %config.namespace,
+        database = %config.database,
+        "Successfully connected to SurrealDB"
     );
 
     Ok(db)

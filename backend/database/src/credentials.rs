@@ -215,47 +215,66 @@ impl DatabaseCredentials {
     pub async fn rotate(&mut self) -> Result<(), AppError> {
         match self.source {
             CredentialSource::Direct => {
-                tracing::warn!("Cannot rotate direct credentials");
+                tracing::warn!(
+                    credential_source = ?self.source,
+                    "Credential rotation not available for direct credentials"
+                );
                 Ok(())
             }
             CredentialSource::Environment => {
-                // Reload from environment
-                if let Ok(refreshed) = Self::from_env(
-                    &format!(
-                        "DB_USERNAME_{}",
-                        SystemTime::now().elapsed().unwrap().as_secs()
-                    ),
-                    &format!(
-                        "DB_PASSWORD_{}",
-                        SystemTime::now().elapsed().unwrap().as_secs()
-                    ),
-                ) {
+                // Generate environment variable names based on timestamp
+                let timestamp = SystemTime::now().elapsed().unwrap_or_default().as_secs();
+                let username_var = format!("DB_USERNAME_{}", timestamp);
+                let password_var = format!("DB_PASSWORD_{}", timestamp);
+
+                tracing::info!(
+                    credential_source = ?self.source,
+                    username_var = %username_var,
+                    "Attempting credential rotation from environment"
+                );
+
+                if let Ok(refreshed) = Self::from_env(&username_var, &password_var) {
                     self.username = refreshed.username;
                     self.password = refreshed.password;
                     self.last_rotated = Some(SystemTime::now());
-                    tracing::info!("Rotated credentials from environment");
+
+                    tracing::info!(
+                        credential_source = ?self.source,
+                        last_rotated = ?self.last_rotated,
+                        "Successfully rotated credentials from environment"
+                    );
                     Ok(())
                 } else {
-                    tracing::warn!("Failed to rotate credentials from environment");
-                    Err(AppError::InvalidInput(
-                        "Failed to rotate credentials from environment".to_string(),
-                    ))
+                    let error_msg = "Failed to rotate credentials from environment";
+                    tracing::error!(
+                        credential_source = ?self.source,
+                        username_var = %username_var,
+                        "Credential rotation failed"
+                    );
+                    Err(AppError::InvalidInput(error_msg.to_string()))
                 }
             }
             CredentialSource::File => {
                 // For file-based credentials, we assume the file is updated externally
                 // Just update the last_rotated timestamp
                 self.last_rotated = Some(SystemTime::now());
-                tracing::info!("Marked file-based credentials as rotated");
+                tracing::info!(
+                    credential_source = ?self.source,
+                    last_rotated = ?self.last_rotated,
+                    "Marked file-based credentials as rotated"
+                );
                 Ok(())
             }
             CredentialSource::Vault => {
                 #[cfg(feature = "vault")]
                 {
-                    // Implementation would depend on your vault client
-                    // This is a placeholder
-                    tracing::info!("Rotated vault credentials");
                     self.last_rotated = Some(SystemTime::now());
+
+                    tracing::info!(
+                        credential_source = ?self.source,
+                        last_rotated = ?self.last_rotated,
+                        "Rotated vault credentials"
+                    );
                     Ok(())
                 }
 

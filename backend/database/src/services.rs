@@ -1,6 +1,7 @@
 use crate::types::Database;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use stablemint_error::AppError;
 use std::marker::PhantomData;
 use surrealdb::engine::any::Any;
 
@@ -177,6 +178,17 @@ where
         }
     }
 
+    fn is_valid_identifier(s: &str) -> bool {
+        if s.is_empty() {
+            return false;
+        }
+        let first_char = s.chars().next().unwrap();
+        if !first_char.is_ascii_alphabetic() && first_char != '_' {
+            return false;
+        }
+        s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+
     // Format error context message
     #[inline]
     fn context_msg(&self, action: &str) -> String {
@@ -217,24 +229,39 @@ where
             .context(self.context_msg("read by ID"))
     }
 
-    // Get records by a field and value
-    pub async fn get_records_by_field<V>(&self, field: &str, value: V) -> Result<Vec<T>>
+    pub async fn get_records_by_field<V>(&self, field: &str, value: V) -> Result<Vec<T>, AppError>
     where
         V: Serialize + Send + Sync + 'static,
     {
+        // Validate field name first
+        if !Self::is_valid_identifier(field) {
+            return Err(AppError::InvalidInput(format!(
+                "Invalid field name: {}",
+                field
+            )));
+        }
+
         let sql = format!("SELECT * FROM {} WHERE {} = $value", self.table_name, field);
-        let value_json = serde_json::to_value(value)
-            .context(format!("Failed to serialize value for field '{}'", field))?;
+        let value_json = serde_json::to_value(value).map_err(|e| {
+            AppError::InvalidInput(format!("Failed to serialize field value: {}", e))
+        })?;
 
         self.db
             .query(&sql)
             .bind(("value", value_json))
             .execute()
             .await
-            .context(format!(
-                "Failed to execute query on {} for field '{}'",
-                self.table_name, field
-            ))
+            .map_err(|e| {
+                // Log the detailed error for troubleshooting
+                tracing::error!(
+                    error = %e,
+                    table = %self.table_name,
+                    field = %field,
+                    "Failed to execute field query"
+                );
+                // Return a sanitized database error to the caller
+                AppError::Database(anyhow::anyhow!("Query execution failed: {}", e))
+            })
     }
 
     // Bulk create multiple records - uses transaction for better performance
