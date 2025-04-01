@@ -1,5 +1,5 @@
 [package]
-name = "models"
+name = "stablemint-models"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
