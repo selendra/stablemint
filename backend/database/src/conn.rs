@@ -37,14 +37,9 @@ impl DatabaseConfig {
     /// Convert to the new secure config for enhanced security features
     pub fn to_secure_config(self) -> SecureDatabaseConfig {
         use crate::credentials::DatabaseCredentials;
-        
+
         let credentials = DatabaseCredentials::new_direct(self.username, self.password);
-        SecureDatabaseConfig::new(
-            self.endpoint,
-            credentials,
-            self.namespace,
-            self.database,
-        )
+        SecureDatabaseConfig::new(self.endpoint, credentials, self.namespace, self.database)
     }
 }
 
