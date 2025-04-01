@@ -216,7 +216,7 @@ impl AuthorizationService {
 
 /// Authorized database service that wraps database operations with authorization checks
 pub struct AuthorizedDbService<'a, T> {
-    service: crate::service::DbService<'a, T>,
+    service: crate::services::DbService<'a, T>,
     auth_service: &'a AuthorizationService,
 }
 
@@ -230,7 +230,7 @@ where
         auth_service: &'a AuthorizationService,
     ) -> Self {
         Self {
-            service: crate::service::DbService::new(db, table_name),
+            service: crate::services::DbService::new(db, table_name),
             auth_service,
         }
     }
@@ -443,7 +443,7 @@ where
 }
 
 // Add a method to DbService to expose table_name for AuthorizedDbService
-impl<'a, T> crate::service::DbService<'a, T>
+impl<'a, T> crate::services::DbService<'a, T>
 where
     T: Clone + Serialize + for<'de> Deserialize<'de> + Send + Sync + 'static,
 {
