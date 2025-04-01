@@ -1,0 +1,11 @@
+[package]
+name = "models"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+async-graphql = { workspace = true }
+serde = { workspace = true }
+surrealdb = { workspace = true }
