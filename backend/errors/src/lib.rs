@@ -1,8 +1,10 @@
-// Application error types with improved categorization
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("Database error: {0}")]
     Database(anyhow::Error),
+
+    #[error("Unauthorized error: {0}")]
+    Unauthorized(anyhow::Error),
 
     #[error("Database connection error: {0}")]
     ConnectionError(anyhow::Error),
@@ -30,6 +32,9 @@ pub enum AppError {
 
     #[error("Internal server error")]
     Internal(anyhow::Error),
+
+    #[error("Database error: {0}")]
+    ServerError(anyhow::Error),
 }
 
 impl From<anyhow::Error> for AppError {
@@ -43,6 +48,8 @@ impl AppError {
     // Get a user-safe error message that doesn't expose sensitive details
     pub fn user_message(&self) -> String {
         match self {
+            AppError::ServerError(_) => "Server operation failed".to_string(),
+            AppError::Unauthorized(_) => "Unauthorized operation failed".to_string(),
             AppError::Database(_) => "Database operation failed".to_string(),
             AppError::ConnectionError(_) => "Database connection failed".to_string(),
             AppError::QueryError(_) => "Database operation failed".to_string(),
@@ -59,6 +66,8 @@ impl AppError {
     // Get error code for logging/tracking
     pub fn error_code(&self) -> &'static str {
         match self {
+            AppError::ServerError(_) => "SERVER_001",
+            AppError::Unauthorized(_) => "AUTH_001",
             AppError::Database(_) => "DB_ERR_001",
             AppError::ConnectionError(_) => "DB_CONN_001",
             AppError::QueryError(_) => "DB_QUERY_001",

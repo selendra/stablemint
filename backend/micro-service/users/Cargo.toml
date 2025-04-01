@@ -5,4 +5,14 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+uuid = { workspace = true }
 tokio = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+argon2 = { workspace = true }
+chrono = { workspace = true }
+async-graphql = { workspace = true }
+stablemint-models = { workspace = true }
+stablemint-error = { workspace = true }
+stablemint-surrealdb = { workspace = true }
+stablemint-utils = { workspace = true }

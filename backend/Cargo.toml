@@ -4,6 +4,7 @@ members = [
     "errors", 
     "micro-service/users", 
     "models",
+    "utils"
 ]
 
 resolver = "2"
@@ -22,8 +23,10 @@ thiserror = "2.0.12"
 tracing = "0.1.41"
 tower = "0.5.2"
 tempfile = "3.7.0"
+argon2 = "0.5.3"
 async-graphql-axum = "7.0.16"
 
+uuid = { version = "1.16.0", features = ["v4", "serde"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 serde = { version = "1.0.219", features = ["derive"] }
@@ -46,4 +49,5 @@ tower-http = { version = "0.6.2", features = [
 
 stablemint-surrealdb = { path = "database" }
 stablemint-error = { path = "errors" }
-
+stablemint-models = { path = "models" }
+stablemint-utils = { path = "utils" }
