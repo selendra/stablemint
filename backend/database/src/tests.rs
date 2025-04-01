@@ -6,7 +6,6 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use surrealdb::sql::Thing;
 
-    use std::env;
     use std::sync::Arc;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,25 +19,13 @@ mod tests {
     }
 
     async fn setup_test_db() -> Result<Arc<Database>> {
-        // For in-memory SurrealDB, any credentials will work, but they need to be consistent
-        // Set default env vars for testing if not already set
-        if env::var("SURREALDB_ENDPOINT").is_err() {
-            unsafe { env::set_var("SURREALDB_ENDPOINT", "memory".to_owned()) };
-        }
-        if env::var("SURREALDB_USERNAME").is_err() {
-            unsafe { env::set_var("SURREALDB_USERNAME", "test") }; // Use consistent credentials
-        }
-        if env::var("SURREALDB_PASSWORD").is_err() {
-            unsafe { env::set_var("SURREALDB_PASSWORD", "test") }; // Use consistent credentials
-        }
-        if env::var("SURREALDB_NAMESPACE").is_err() {
-            unsafe { env::set_var("SURREALDB_NAMESPACE", "root") };
-        }
-        if env::var("SURREALDB_DATABASE").is_err() {
-            unsafe { env::set_var("SURREALDB_DATABASE", "root") };
-        }
+        const ENDPOINT: &str = "memory";
+        const USERNAME: &str = "test";
+        const PASSWORD: &str = "test";
+        const NAMESPACE: &str = "root";
+        const DATABASE: &str = "root";
 
-        let config = DatabaseConfig::from_env()?;
+        let config = DatabaseConfig::new(ENDPOINT, USERNAME, PASSWORD, NAMESPACE, DATABASE);
 
         let db = initialize_db(config).await?;
 
@@ -307,38 +294,6 @@ mod tests {
         assert_eq!(jack_records.len(), 1, "Should find Jack");
         assert_eq!(harry_records[0].age, 22);
         assert_eq!(jack_records[0].age, 35);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_record_exists() -> Result<()> {
-        let db = setup_test_db().await?;
-        let user_service = DbService::<TestUser>::new(&db, "users");
-
-        // Create a user
-        let user = TestUser {
-            id: None,
-            name: "Kelly".to_string(),
-            email: "kelly@example.com".to_string(),
-            age: 27,
-        };
-
-        let created_user = user_service.create_record(user).await?.unwrap();
-
-        let thing_id = created_user
-            .id
-            .as_ref()
-            .map(|thing| thing.id.to_string())
-            .unwrap_or_default();
-
-        // Check that it exists
-        let exists = user_service.record_exists(&thing_id).await?;
-        assert!(exists, "User should exist");
-
-        // Check a non-existent id with proper format
-        let fake_exists = user_service.record_exists("users:non-existent-id").await?;
-        assert!(!fake_exists, "Non-existent user should not exist");
 
         Ok(())
     }

@@ -1,6 +1,5 @@
 use crate::types::Database;
 use anyhow::{Context, Result};
-use dotenv::dotenv;
 use stablemint_error::AppError;
 use std::sync::Arc;
 use surrealdb::{Surreal, engine::any::Any, opt::auth::Root};
@@ -30,20 +29,6 @@ impl DatabaseConfig {
             namespace: namespace.into(),
             database: database.into(),
         }
-    }
-
-    pub fn from_env() -> Result<Self> {
-        use std::env;
-        dotenv().ok();
-
-        Ok(Self {
-            endpoint: env::var("SURREALDB_ENDPOINT").context("SURREALDB_ENDPOINT must be set")?,
-            username: env::var("SURREALDB_USERNAME").context("SURREALDB_USERNAME must be set")?,
-            password: env::var("SURREALDB_PASSWORD").context("SURREALDB_PASSWORD must be set")?,
-            namespace: env::var("SURREALDB_NAMESPACE")
-                .context("SURREALDB_NAMESPACE must be set")?,
-            database: env::var("SURREALDB_DATABASE").context("SURREALDB_DATABASE must be set")?,
-        })
     }
 }
 

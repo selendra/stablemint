@@ -303,28 +303,4 @@ where
             self.table_name
         ))
     }
-
-    // Efficiently check if a record exists by ID
-    pub async fn record_exists(&self, record_id: &str) -> Result<bool> {
-        let result: Vec<serde_json::Value> = match self
-            .db
-            .select(&self.table_name, record_id)
-            .await
-            .context(self.context_msg("read by ID"))?
-        {
-            Some(value) => vec![value],
-            None => Vec::new(),
-        };
-
-        match result.first() {
-            Some(value) => {
-                if let Some(count) = value.get("count").and_then(|c| c.as_i64()) {
-                    Ok(count > 0)
-                } else {
-                    Ok(false)
-                }
-            }
-            None => Ok(false),
-        }
-    }
 }
