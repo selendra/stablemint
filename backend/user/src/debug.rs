@@ -2,7 +2,7 @@ use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use std::sync::Arc;
 use tracing::info;
 
-use crate::{handlers::auth::AuthService, middleware::auth};
+use app_authentication::{AuthService, JwtService}; // Import from auth crate
 
 // Middleware to debug available extensions
 pub async fn debug_extensions(req: Request<Body>, next: Next) -> Response {
@@ -20,11 +20,7 @@ pub async fn debug_extensions(req: Request<Body>, next: Next) -> Response {
             info!("❌ AuthService is NOT available in extensions");
         }
 
-        if req
-            .extensions()
-            .get::<Arc<auth::jwt::JwtService>>()
-            .is_some()
-        {
+        if req.extensions().get::<Arc<JwtService>>().is_some() {
             info!("✅ JwtService is available in extensions");
         } else {
             info!("❌ JwtService is NOT available in extensions");

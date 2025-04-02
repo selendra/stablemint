@@ -1,4 +1,4 @@
-use crate::{middleware::auth::jwt::JwtService, schema::ApiSchema};
+use app_authentication::{AuthService, JwtService}; // Import from the auth crate
 use app_error::AppResult;
 use async_graphql::http::GraphiQLSource;
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
@@ -9,11 +9,9 @@ use axum::{
 };
 use std::sync::Arc;
 
-use super::auth::AuthService;
-
 // Handler for GraphQL POST requests with authentication
 pub async fn graphql_handler(
-    schema: Extension<ApiSchema>,
+    schema: Extension<crate::schema::ApiSchema>,
     jwt_service: Extension<Arc<JwtService>>,
     auth_service: Extension<Arc<AuthService>>,
     headers: HeaderMap,

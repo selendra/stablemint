@@ -1,17 +1,7 @@
 use crate::{
-    handlers::{
-        auth::AuthService,
-        graphql::{graphql_handler, graphql_playground, health_check},
-    },
-    middleware::debug::debug_extensions,
+    debug::debug_extensions,
+    handlers::graphql::{graphql_handler, graphql_playground, health_check},
     schema::ApiSchema,
-};
-use app_error::middleware_handling::error_handling_middleware;
-use axum::{
-    Router,
-    extract::Extension,
-    middleware::{self},
-    routing::get,
 };
 use std::{sync::Arc, time::Duration};
 use tower::ServiceBuilder;
@@ -20,6 +10,16 @@ use tower_http::{
     cors::{Any, CorsLayer},
     timeout::TimeoutLayer,
     trace::TraceLayer,
+};
+
+use app_authentication::AuthService; // Import from the auth crate
+use app_authentication::service::AuthServiceTrait;
+use app_error::middleware_handling::error_handling_middleware;
+use axum::{
+    Router,
+    extract::Extension,
+    middleware::{self},
+    routing::get,
 };
 
 // Create application routes with middleware

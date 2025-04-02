@@ -4,7 +4,8 @@ members = [
     "config",
     "database",
     "models",
-    "error"
+    "error",
+    "authentication"
 ]
 
 resolver = "2"
@@ -71,3 +72,4 @@ app-config = { path = "config" }
 app-database = { path = "database" }
 app-error = { path = "error" }
 app-models = { path = "models" }
+app-authentication = { path = "authentication" }

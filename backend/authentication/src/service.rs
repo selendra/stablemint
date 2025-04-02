@@ -1,17 +1,36 @@
-use app_authentication::{JwtService, hash_password, verify_password};
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
 use app_models::user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile};
-
+use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{error, info};
 
+use crate::{JwtService, hash_password, verify_password};
+
+/// Trait defining the authentication service interface
+#[async_trait]
+pub trait AuthServiceTrait: Send + Sync {
+    /// Register a new user
+    async fn register(&self, input: RegisterInput) -> AppResult<AuthResponse>;
+
+    /// Login an existing user
+    async fn login(&self, input: LoginInput) -> AppResult<AuthResponse>;
+
+    /// Get a user by their ID
+    async fn get_user_by_id(&self, user_id: &str) -> AppResult<UserProfile>;
+
+    /// Get the JWT service
+    fn get_jwt_service(&self) -> Arc<JwtService>;
+}
+
+/// Implementation of the authentication service
 pub struct AuthService {
     jwt_service: Arc<JwtService>,
     user_db: Option<Arc<DbService<'static, User>>>,
 }
 
 impl AuthService {
+    /// Create a new authentication service with the given JWT secret
     pub fn new(jwt_secret: &[u8]) -> Self {
         Self {
             jwt_service: Arc::new(JwtService::new(jwt_secret)),
@@ -19,17 +38,20 @@ impl AuthService {
         }
     }
 
-    // Add database service
+    /// Add a database service to the authentication service
     pub fn with_db(mut self, user_db: Arc<DbService<'static, User>>) -> Self {
         self.user_db = Some(user_db);
         self
     }
+}
 
-    pub fn get_jwt_service(&self) -> Arc<JwtService> {
+#[async_trait]
+impl AuthServiceTrait for AuthService {
+    fn get_jwt_service(&self) -> Arc<JwtService> {
         Arc::clone(&self.jwt_service)
     }
 
-    pub async fn register(&self, input: RegisterInput) -> AppResult<AuthResponse> {
+    async fn register(&self, input: RegisterInput) -> AppResult<AuthResponse> {
         // Validate input (add more validation as needed)
         if input.username.trim().is_empty() || input.password.trim().is_empty() {
             return Err(AppError::ValidationError(
@@ -119,7 +141,7 @@ impl AuthService {
         })
     }
 
-    pub async fn login(&self, input: LoginInput) -> AppResult<AuthResponse> {
+    async fn login(&self, input: LoginInput) -> AppResult<AuthResponse> {
         if let Some(user_db) = &self.user_db {
             // Find user by username
             let users = user_db
@@ -165,8 +187,7 @@ impl AuthService {
         }
     }
 
-    // Get user by ID
-    pub async fn get_user_by_id(&self, user_id: &str) -> AppResult<UserProfile> {
+    async fn get_user_by_id(&self, user_id: &str) -> AppResult<UserProfile> {
         if let Some(user_db) = &self.user_db {
             let clean_id = user_id.trim_start_matches('⟨').trim_end_matches('⟩');
 
@@ -184,6 +205,100 @@ impl AuthService {
             Err(AppError::ServerError(anyhow::anyhow!(
                 "Database not available"
             )))
+        }
+    }
+}
+
+// For testing purposes
+#[cfg(test)]
+pub mod mocks {
+    use super::*;
+    use app_error::{AppError, AppResult};
+    use app_models::user::{AuthResponse, LoginInput, RegisterInput, UserProfile};
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
+
+    pub struct MockAuthService {
+        jwt_service: Arc<JwtService>,
+        users: Arc<Mutex<Vec<User>>>,
+    }
+
+    impl MockAuthService {
+        pub fn new(jwt_secret: &[u8]) -> Self {
+            Self {
+                jwt_service: Arc::new(JwtService::new(jwt_secret)),
+                users: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl AuthServiceTrait for MockAuthService {
+        fn get_jwt_service(&self) -> Arc<JwtService> {
+            Arc::clone(&self.jwt_service)
+        }
+
+        async fn register(&self, input: RegisterInput) -> AppResult<AuthResponse> {
+            // Create a new user
+            let user = User::new(
+                input.name,
+                input.username.clone(),
+                input.email,
+                input.password, // In mock, we don't hash the password
+                "0xmockaddress".to_string(),
+                "0xmockprivatekey".to_string(),
+            );
+
+            let profile = UserProfile::from(user.clone());
+            let token = self
+                .jwt_service
+                .generate_token(&user.id.id.to_string(), &user.username)?;
+
+            // Store the user
+            self.users.lock().unwrap().push(user);
+
+            Ok(AuthResponse {
+                token,
+                user: profile,
+            })
+        }
+
+        async fn login(&self, input: LoginInput) -> AppResult<AuthResponse> {
+            // Find the user
+            let users = self.users.lock().unwrap();
+            let user = users
+                .iter()
+                .find(|u| u.username == input.username)
+                .ok_or_else(|| {
+                    AppError::AuthenticationError("Invalid username or password".to_string())
+                })?;
+
+            // In mock, we don't verify the password, we just check equality
+            if user.password != input.password {
+                return Err(AppError::AuthenticationError(
+                    "Invalid username or password".to_string(),
+                ));
+            }
+
+            let profile = UserProfile::from(user.clone());
+            let token = self
+                .jwt_service
+                .generate_token(&user.id.id.to_string(), &user.username)?;
+
+            Ok(AuthResponse {
+                token,
+                user: profile,
+            })
+        }
+
+        async fn get_user_by_id(&self, user_id: &str) -> AppResult<UserProfile> {
+            let users = self.users.lock().unwrap();
+            let user = users
+                .iter()
+                .find(|u| u.id.id.to_string() == user_id)
+                .ok_or_else(|| AppError::NotFoundError("User not found".to_string()))?;
+
+            Ok(UserProfile::from(user.clone()))
         }
     }
 }
