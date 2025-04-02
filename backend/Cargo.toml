@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "user",
+    "micro-service/user",
     "config",
     "database",
     "models",
