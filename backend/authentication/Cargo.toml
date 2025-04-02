@@ -1,0 +1,16 @@
+[package]
+name = "stablemint-authentication"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+http = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+async-trait = { workspace = true }
+stablemint-error = { workspace = true }
+jsonwebtoken = { workspace = true }
