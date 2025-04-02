@@ -118,8 +118,4 @@ where
     }
 }
 
-
-#[cfg(test)]
-mod tests {
-
-}
+impl std::error::Error for AppError {}

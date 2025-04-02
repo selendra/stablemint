@@ -35,7 +35,7 @@ async fn main() -> Result<(), AppError> {
     // Load server configuration
     let config = Server::from_env().context("Failed to load server configuration")?;
 
-    // Initialize the database connection
+    // Initialize the database connection with the new connection pool
     let db_arc = DB_ARC
         .get_or_init(|| async {
             initialize_db().await.unwrap_or_else(|e| {
@@ -72,7 +72,7 @@ async fn main() -> Result<(), AppError> {
     info!("GraphQL playground available at: http://{}", address);
 
     // Start server with graceful error handling
-    info!("Server starting");
+    info!("Server starting with connection pool");
     axum::serve(listener, app).await.context("Server error")?;
 
     Ok(())

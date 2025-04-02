@@ -10,6 +10,7 @@ pub struct DatabaseConfig {
     pub password: String,
     pub namespace: String,
     pub database: String,
+    pub max_connections: usize,
 }
 
 impl DatabaseConfig {
@@ -24,6 +25,10 @@ impl DatabaseConfig {
             password: env::var("SURREALDB_PASSWORD").unwrap_or_else(|_| "root".to_string()),
             namespace: env::var("SURREALDB_NAMESPACE").unwrap_or_else(|_| "selendraDb".to_string()),
             database: env::var("SURREALDB_DATABASE").unwrap_or_else(|_| "cryptoBank".to_string()),
+            max_connections: env::var("MAX_DB_POOL")
+                .unwrap_or_else(|_| "5".to_string())
+                .parse::<usize>()
+                .unwrap_or(5),
         })
     }
 
@@ -32,14 +37,16 @@ impl DatabaseConfig {
         username: String,
         password: String,
         namespace: String,
-        database: String
+        database: String,
+        max_connections: usize,
     ) -> Self {
         Self {
             endpoint,
             username,
             password,
             namespace,
-            database
+            database,
+            max_connections,
         }
     }
 }

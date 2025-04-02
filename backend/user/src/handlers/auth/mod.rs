@@ -48,7 +48,7 @@ impl AuthService {
                 .await
                 .map_err(|e| {
                     error!("Database error when checking for existing user: {}", e);
-                    AppError::DatabaseError(e)
+                    AppError::DatabaseError(anyhow::anyhow!(e))
                 })?;
 
             if !existing_users.is_empty() {
@@ -62,7 +62,7 @@ impl AuthService {
                 .await
                 .map_err(|e| {
                     error!("Database error when checking for existing email: {}", e);
-                    AppError::DatabaseError(e)
+                    AppError::DatabaseError(anyhow::anyhow!(e))
                 })?;
 
             if !existing_emails.is_empty() {
@@ -101,7 +101,7 @@ impl AuthService {
                 }
                 Err(e) => {
                     error!("Failed to store user in database: {}", e);
-                    return Err(AppError::DatabaseError(e));
+                    return Err(AppError::DatabaseError(anyhow::anyhow!(e)));
                 }
             }
         } else {
@@ -131,7 +131,7 @@ impl AuthService {
                 .await
                 .map_err(|e| {
                     error!("Database error when fetching user for login: {}", e);
-                    AppError::DatabaseError(e)
+                    AppError::DatabaseError(anyhow::anyhow!(e))
                 })?;
 
             if users.is_empty() {
@@ -179,7 +179,7 @@ impl AuthService {
                 .await
                 .map_err(|e| {
                     error!("Database error when fetching user by ID: {}", e);
-                    AppError::DatabaseError(e)
+                    AppError::DatabaseError(anyhow::anyhow!(e))
                 })?
                 .ok_or_else(|| AppError::NotFoundError("User not found".to_string()))?;
 

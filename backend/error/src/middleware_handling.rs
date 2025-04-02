@@ -9,7 +9,6 @@ use tracing::{error, info};
 
 use crate::{AppError, ErrorResponse};
 
-
 // Middleware to handle errors and log requests
 pub async fn error_handling_middleware(
     req: Request<Body>,
