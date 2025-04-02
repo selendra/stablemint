@@ -1,11 +1,11 @@
 [workspace]
 members = [
     "micro-service/user",
-    "config",
-    "database",
-    "models",
-    "error",
-    "authentication"
+    "crates/config",
+    "crates/database",
+    "crates/models",
+    "crates/error",
+    "crates/authentication"
 ]
 
 resolver = "2"
@@ -68,8 +68,8 @@ surrealdb = { version = "2.2.1", features = ["kv-mem"] }
 deadpool = "0.12.2"
 
 # local dependencies
-app-config = { path = "config" }
-app-database = { path = "database" }
-app-error = { path = "error" }
-app-models = { path = "models" }
-app-authentication = { path = "authentication" }
+app-config = { path = "crates/config" }
+app-database = { path = "crates/database" }
+app-error = { path = "crates/error" }
+app-models = { path = "crates/models" }
+app-authentication = { path = "crates/authentication" }
