@@ -31,17 +31,32 @@ impl ConnectionPool {
 
         // If we got a connection, return it
         if let Some(conn) = conn_opt {
-            return Ok(PooledConnection {
-                conn: Some(conn),
-                pool: self,
-            });
+            // Verify connection is still alive - this could be made more robust
+            if conn.version().await.is_ok() {
+                return Ok(PooledConnection {
+                    conn: Some(conn),
+                    pool: self,
+                });
+            }
+            // Connection is not valid, continue to create a new one
         }
 
-        // Otherwise create a new connection
-        let new_conn = surrealdb::engine::any::connect(&self.connection_url)
-            .await
-            .context("Failed to connect to database")
-            .db_err()?;
+        // Otherwise create a new connection with timeout
+        use tokio::time::timeout;
+        use std::time::Duration;
+        
+        // Set 5 second timeout for connection attempts
+        let conn_future = surrealdb::engine::any::connect(&self.connection_url);
+        let new_conn = match timeout(Duration::from_secs(5), conn_future).await {
+            Ok(conn_result) => conn_result
+                .context("Failed to connect to database")
+                .db_err()?,
+            Err(_) => {
+                return Err(AppError::DatabaseError(anyhow::anyhow!(
+                    "Database connection timeout - could not establish connection within 5 seconds"
+                )));
+            }
+        };
 
         Ok(PooledConnection {
             conn: Some(new_conn),
@@ -60,8 +75,56 @@ impl ConnectionPool {
     }
 }
 
+// Secure credentials structure that doesn't implement Debug/Display
+#[derive(Clone)]
+pub struct DbCredentials {
+    username: String,
+    password: String,
+}
+
+impl DbCredentials {
+    pub fn new(username: impl Into<String>, password: impl Into<String>) -> Self {
+        Self {
+            username: username.into(),
+            password: password.into(),
+        }
+    }
+    
+    pub fn from_env() -> AppResult<Self> {
+        Ok(Self {
+            username: std::env::var("SURREALDB_USERNAME").context("Missing SURREALDB_USERNAME")?,
+            password: std::env::var("SURREALDB_PASSWORD").context("Missing SURREALDB_PASSWORD")?,
+        })
+    }
+    
+    pub fn get_username(&self) -> &str {
+        &self.username
+    }
+    
+    pub fn get_password(&self) -> &str {
+        &self.password
+    }
+}
+
+// Don't accidentally log credentials
+impl std::fmt::Debug for DbCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DbCredentials")
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
+}
+
 impl Database {
     pub fn new(connection_url: &str, max_connections: usize) -> Self {
+        // Validate connection URL format
+        if !connection_url.starts_with("ws://") && 
+           !connection_url.starts_with("wss://") && 
+           !connection_url.starts_with("memory") {
+            tracing::warn!("Potentially invalid database connection URL format: {}", connection_url);
+        }
+        
         let pool = ConnectionPool::new(connection_url, max_connections);
         Self { pool }
     }
@@ -75,20 +138,30 @@ impl Database {
         max_connections: usize,
         namespace: &str,
         database: &str,
-        username: &str,
-        password: &str,
+        credentials: &DbCredentials,
     ) -> AppResult<Self> {
+        // Validate inputs
+        if namespace.trim().is_empty() {
+            return Err(AppError::ValidationError("Database namespace cannot be empty".into()));
+        }
+        
+        if database.trim().is_empty() {
+            return Err(AppError::ValidationError("Database name cannot be empty".into()));
+        }
+        
         let db = Self::new(connection_url, max_connections);
 
         {
             let conn = db.get_connection().await?;
+            
+            // Sign in with secure credentials
             conn.get_ref()
                 .signin(Root {
-                    username: username,
-                    password: password,
+                    username: credentials.get_username(),
+                    password: credentials.get_password(),
                 })
                 .await
-                .context("Failed to select namespace and database")
+                .context("Failed to authenticate with database")
                 .db_err()?;
 
             conn.get_ref()
@@ -102,8 +175,6 @@ impl Database {
         Ok(db)
     }
 
-    // For testing purposes
-    // This function creates a new in-memory database with the given namespace and database name.
     pub async fn initialize_memmory_db(
         max_connections: usize,
         namespace: &str,
@@ -367,10 +438,32 @@ where
     }
 
     // Get records by a field and value
+    // Validate identifier for SQL injection prevention
+    fn validate_identifier(&self, identifier: &str) -> AppResult<()> {
+        // This is a simple validation - you might want to use a more comprehensive regex
+        // based on SurrealDB's identifier rules
+        let valid_pattern = regex::Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap();
+        
+        if !valid_pattern.is_match(identifier) {
+            return Err(AppError::ValidationError(format!(
+                "Invalid identifier '{}': must start with a letter or underscore and contain only alphanumeric characters and underscores",
+                identifier
+            )));
+        }
+        
+        Ok(())
+    }
+    
     pub async fn get_records_by_field<V>(&self, field: &str, value: V) -> AppResult<Vec<T>>
     where
         V: Serialize + Send + Sync + 'static,
     {
+        // Validate field name for SQL injection prevention
+        self.validate_identifier(field)?;
+        
+        // Validate table name just in case
+        self.validate_identifier(&self.table_name)?;
+        
         let sql = format!("SELECT * FROM {} WHERE {} = $value", self.table_name, field);
 
         let value_json = serde_json::to_value(value).map_err(|e| {
@@ -426,9 +519,27 @@ where
         sql: &str,
         bindings: Vec<(String, serde_json::Value)>,
     ) -> AppResult<Vec<T>> {
+        // Log the query for security auditing (without parameter values)
+        tracing::debug!("Executing custom query on {}: {}", self.table_name, sql);
+        
+        // Ensure the query uses parameterized values and not string interpolation
+        if sql.contains("${") || sql.contains("'+") || sql.contains("'+") {
+            return Err(AppError::ValidationError(
+                "Custom SQL queries must use parameterized queries ($param) for security".into()
+            ));
+        }
+        
         let mut query = self.db.query(sql);
 
         for (name, value) in bindings {
+            // Validate parameter names
+            if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Err(AppError::ValidationError(format!(
+                    "Invalid parameter name '{}': must contain only alphanumeric characters and underscores",
+                    name
+                )));
+            }
+        
             query = query.bind((name, value));
         }
 
@@ -529,7 +640,7 @@ mod tests {
         // Now try to select the record by ID
         let selected = service.get_record_by_id(&record_id).await?;
         assert!(selected.is_some(), "Record should be retrievable");
-
+        
         Ok(())
     }
 }

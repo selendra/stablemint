@@ -7,3 +7,4 @@ edition = "2024"
 anyhow = { workspace = true }
 dotenv = { workspace = true }
 serde = { workspace = true }
+app-error = { workspace = true }
