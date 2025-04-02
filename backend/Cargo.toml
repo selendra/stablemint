@@ -73,3 +73,5 @@ app-database = { path = "crates/database" }
 app-error = { path = "crates/error" }
 app-models = { path = "crates/models" }
 app-authentication = { path = "crates/authentication" }
+
+mico-user = { path = "micro-service/user" }

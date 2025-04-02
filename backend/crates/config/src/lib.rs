@@ -150,3 +150,36 @@ impl SentryConfig {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct JwtConfig {
+    pub secret: Vec<u8>,
+    pub expiry_hours: u64,
+}
+
+impl JwtConfig {
+    pub fn from_env() -> Result<Self> {
+        dotenv().ok();
+
+        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+            if cfg!(debug_assertions) {
+                // Generate a random secret for development only
+                use uuid::Uuid;
+                Uuid::new_v4().to_string()
+            } else {
+                // In production, fail if JWT_SECRET is not set
+                panic!("JWT_SECRET must be set in production. Application cannot start securely without it.");
+            }
+        }).into_bytes();
+
+        let expiry_hours = env::var("JWT_EXPIRY_HOURS")
+            .unwrap_or_else(|_| "24".to_string())
+            .parse::<u64>()
+            .unwrap_or(24);
+
+        Ok(Self {
+            secret,
+            expiry_hours,
+        })
+    }
+}

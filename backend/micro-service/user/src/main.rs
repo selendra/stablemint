@@ -2,11 +2,11 @@ use anyhow::{Context, Result};
 use micro_user::routes;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing::{Level, error, info, warn};
+use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
 use app_authentication::AuthService; // Import from the auth crate
-use app_config::{SentryConfig, Server};
+use app_config::{JwtConfig, SentryConfig, Server};
 use app_database::{DB_ARC, db_connect::initialize_db, service::DbService};
 use app_error::AppError;
 use app_models::user::User;
@@ -36,6 +36,7 @@ async fn main() -> Result<(), AppError> {
 
     // Load server configuration
     let config = Server::from_env().context("Failed to load server configuration")?;
+    let jwt_config = JwtConfig::from_env().context("Failed to load JWT configuration")?;
 
     // Initialize the database connection
     let db_arc = DB_ARC
@@ -49,16 +50,9 @@ async fn main() -> Result<(), AppError> {
 
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
 
-    // Setup authentication service
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| {
-            warn!("JWT_SECRET not set, using fallback secret (not secure for production)");
-            "your_fallback_secret_key_for_development_only".to_string()
-        })
-        .into_bytes();
-
     // Now using the Auth service from the app-auth crate
-    let auth_service = Arc::new(AuthService::new(&jwt_secret).with_db(user_db));
+    let auth_service =
+        Arc::new(AuthService::new(&jwt_config.secret, jwt_config.expiry_hours).with_db(user_db));
 
     // Create GraphQL schema
     let schema = create_schema();

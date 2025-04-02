@@ -31,9 +31,9 @@ pub struct AuthService {
 
 impl AuthService {
     /// Create a new authentication service with the given JWT secret
-    pub fn new(jwt_secret: &[u8]) -> Self {
+    pub fn new(jwt_secret: &[u8], expiry_hours: u64) -> Self {
         Self {
-            jwt_service: Arc::new(JwtService::new(jwt_secret)),
+            jwt_service: Arc::new(JwtService::new(jwt_secret, expiry_hours)),
             user_db: None,
         }
     }
@@ -226,7 +226,7 @@ pub mod mocks {
     impl MockAuthService {
         pub fn new(jwt_secret: &[u8]) -> Self {
             Self {
-                jwt_service: Arc::new(JwtService::new(jwt_secret)),
+                jwt_service: Arc::new(JwtService::new(jwt_secret, 10)),
                 users: Arc::new(Mutex::new(Vec::new())),
             }
         }

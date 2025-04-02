@@ -15,19 +15,21 @@ pub struct Claims {
 pub struct JwtService {
     encoding_key: EncodingKey,
     decoding_key: DecodingKey,
+    expiry_hours: u64,
 }
 
 impl JwtService {
-    pub fn new(secret: &[u8]) -> Self {
+    pub fn new(secret: &[u8], expiry_hours: u64) -> Self {
         Self {
             encoding_key: EncodingKey::from_secret(secret),
             decoding_key: DecodingKey::from_secret(secret),
+            expiry_hours,
         }
     }
 
     pub fn generate_token(&self, user_id: &str, username: &str) -> AppResult<String> {
         let now = Utc::now();
-        let expires_at = now + Duration::hours(24);
+        let expires_at = now + Duration::hours(self.expiry_hours as i64);
 
         let claims = Claims {
             sub: user_id.to_string(),
@@ -36,7 +38,6 @@ impl JwtService {
             username: username.to_string(),
         };
 
-        debug!("Generating token for user: {}", username);
         encode(&Header::default(), &claims, &self.encoding_key)
             .map_err(|e| AppError::AuthenticationError(format!("Failed to generate token: {}", e)))
     }
@@ -103,7 +104,7 @@ mod tests {
     // Helper function to create a test JWT service
     fn create_test_jwt_service() -> JwtService {
         let secret = b"test_secret_key_for_testing_purposes_only";
-        JwtService::new(secret)
+        JwtService::new(secret, 10)
     }
 
     #[test]

@@ -35,7 +35,7 @@ mod tests {
 
         // Setup auth service with JWT
         let jwt_secret = "test_jwt_secret".as_bytes().to_vec();
-        let auth_service = Arc::new(AuthService::new(&jwt_secret).with_db(user_db));
+        let auth_service = Arc::new(AuthService::new(&jwt_secret, 1).with_db(user_db));
 
         auth_service
     }
