@@ -38,7 +38,6 @@ pub async fn initialize_db() -> Result<Arc<Database>, AppError> {
         max_connections
     );
 
-
     let db = Database::initialize(
         &config.endpoint,
         max_connections,
@@ -85,13 +84,8 @@ pub async fn initialize_memory_db() -> Result<Arc<Database>, AppError> {
         max_connections
     );
 
-
-    let db = Database::initialize_memmory_db(
-        max_connections,
-        &config.namespace,
-        &config.database,
-    )
-    .await?;
+    let db = Database::initialize_memmory_db(max_connections, &config.namespace, &config.database)
+        .await?;
 
     tracing::info!("Successfully connected to SurrealDB with connection pool");
 
@@ -151,7 +145,7 @@ mod tests {
         unsafe { env::set_var("SURREALDB_PASSWORD", "test_password") };
 
         // Call the function to initialize the database
-        let result = initialize_memory_db().await;
+        let result = initialize_db().await;
 
         // Assert that an error was returned
         assert!(result.is_err(), "Should fail with invalid configuration");
@@ -176,8 +170,7 @@ mod tests {
         unsafe { env::set_var("DB_POOL_SIZE", "3") }; // Small pool for testing
 
         // Initialize the database
-        let db = initialize_memory_db
-        ().await?;
+        let db = initialize_memory_db().await?;
 
         // Test the pool by getting multiple connections
         let conn1 = db.get_connection().await?;
