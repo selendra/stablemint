@@ -1,0 +1,11 @@
+[package]
+name = "app-models"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-graphql = { workspace =  true }
+chrono = { workspace =  true }
+serde = { workspace =  true }
+surrealdb = { workspace =  true }
+uuid = { workspace =  true }
