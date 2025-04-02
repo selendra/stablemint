@@ -1,12 +1,14 @@
 use anyhow::{Context, Result};
-use app_config::{SentryConfig, Server};
-use app_database::{DB_ARC, db_connect::initialize_db, service::DbService};
-use app_error::AppError;
-use micro_user::{handlers::auth::AuthService, models::user::User, routes, schema::create_schema};
+use micro_user::{handlers::auth::AuthService, routes, schema::create_schema};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
+
+use app_config::{SentryConfig, Server};
+use app_database::{DB_ARC, db_connect::initialize_db, service::DbService};
+use app_error::AppError;
+use app_models::user::User;
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {

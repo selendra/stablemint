@@ -1,9 +1,9 @@
-use crate::{
-    handlers::auth::AuthService, middleware::auth::jwt::Claims, models::user::UserProfile,
-};
-use app_error::AppError;
+use crate::{handlers::auth::AuthService, middleware::auth::jwt::Claims};
 use async_graphql::{Context, Object, Result};
 use std::sync::Arc;
+
+use app_error::AppError;
+use app_models::user::UserProfile;
 
 pub struct UserQuery;
 

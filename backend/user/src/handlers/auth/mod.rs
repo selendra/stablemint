@@ -1,13 +1,11 @@
-use crate::{
-    middleware::auth::{
-        jwt::JwtService,
-        password::{self},
-    },
-    models::user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile},
+use crate::middleware::auth::{
+    jwt::JwtService,
+    password::{self},
 };
 
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
+use app_models::user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile};
 
 use std::sync::Arc;
 use tracing::{error, info};

@@ -19,7 +19,6 @@ tracing = { workspace = true }
 sentry-tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-surrealdb = { workspace = true }
 axum = { workspace =  true }
 tower-http = { workspace =  true }
 tower = { workspace =  true }
@@ -29,3 +28,4 @@ async-graphql-axum = { workspace =  true }
 app-config = { workspace =  true }
 app-database = { workspace =  true }
 app-error = { workspace =  true }
+app-models = { workspace =  true }

@@ -1,11 +1,11 @@
-use crate::{
-    handlers::auth::AuthService,
-    models::user::{AuthResponse, LoginInput, RegisterInput},
-};
-use app_error::AppError;
+use crate::handlers::auth::AuthService;
+
 use async_graphql::{Context, Object, Result};
 use std::sync::Arc;
 use tracing::error;
+
+use app_error::AppError;
+use app_models::user::{AuthResponse, LoginInput, RegisterInput};
 
 pub struct UserMutation;
 
