@@ -16,7 +16,7 @@ edition = "2024"
 authors = ["Selendra"]
 
 [workspace.dependencies]
-axum = "0.8.1"
+axum = { version = "0.8.1", features = ["macros"] }
 http = "1.3.1"
 dotenv = "0.15.0"
 anyhow = "1.0.97"

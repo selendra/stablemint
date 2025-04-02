@@ -1,11 +1,26 @@
 use async_graphql::{Context, Error as GraphQLError, Object, Result as GraphQLResult};
 use chrono::Utc;
-use stablemint_authentication::AuthUser;
+use serde::{Deserialize, Serialize};
+use stablemint_authentication::{AuthUser, JwtAuth};
 use stablemint_models::user::{CreateUserInput, DBUser, User, UserRole};
 use stablemint_surrealdb::{services::DbService, types::Database};
-use stablemint_utils::hash_password;
+use stablemint_utils::{hash_password, verify_password};
 use std::sync::Arc;
 use uuid::Uuid;
+
+// Request types
+#[derive(Deserialize, async_graphql::InputObject)]
+struct LoginRequest {
+    email: String,
+    password: String,
+}
+
+// Response types
+#[derive(Serialize, async_graphql::SimpleObject)]
+struct LoginResponse {
+    token: String,
+    user: User,
+}
 
 // GraphQL Mutation Root
 #[derive(Default)]
@@ -72,5 +87,56 @@ impl MutationRoot {
             .ok_or_else(|| GraphQLError::new("Failed to create user"))?;
 
         Ok(User::from_db(created_user))
+    }
+
+    async fn login<'ctx>(
+        &self,
+        ctx: &Context<'ctx>,
+        input: LoginRequest,
+    ) -> GraphQLResult<LoginResponse> {
+        let db = ctx
+            .data::<Arc<Database>>()
+            .map_err(|_| GraphQLError::new("Database connection error"))?;
+
+        let jwt_auth = ctx
+            .data::<Arc<JwtAuth>>()
+            .map_err(|_| GraphQLError::new("JWT auth not available"))?;
+
+        let user_service = DbService::<DBUser>::new(db, "users");
+
+        // Find user by email
+        let users = user_service
+            .get_records_by_field("email", input.email.clone())
+            .await
+            .map_err(|e| GraphQLError::new(format!("Database error: {}", e)))?;
+
+        let user = users
+            .first()
+            .ok_or_else(|| GraphQLError::new("Invalid credentials"))?;
+
+        let is_valid = verify_password(&input.password, &user.password)
+            .map_err(|_| GraphQLError::new("Invalid password"))?;
+
+        if !is_valid {
+            return Err(GraphQLError::new("Invalid credentials"));
+        }
+
+        // Generate JWT token
+        let user_id = user
+            .id
+            .as_ref()
+            .map(|thing| thing.id.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let token = jwt_auth
+            .generate_token(&user_id, &format!("{:?}", user.role), &user.address)
+            .map_err(|_| GraphQLError::new("Failed to generate token"))?;
+
+        let api_user = User::from_db(user.clone());
+
+        Ok(LoginResponse {
+            token,
+            user: api_user,
+        })
     }
 }
