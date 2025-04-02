@@ -1,34 +1,31 @@
+use async_graphql::{Context, Error as GraphQLError, Object, Result as GraphQLResult};
+use stablemint_authentication::AuthUser;
+use stablemint_models::user::{DBUser, User};
+use stablemint_surrealdb::{services::DbService, types::Database};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use async_graphql::{Object, Context};
-use stablemint_error::AppError;
-use stablemint_models::user::User;
-use stablemint_surrealdb::types:: Database;
 
-use crate::schema::UserService;
-
-// JWT claims structure
-#[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String,  // Subject (user ID)
-    role: String, // User role
-    exp: usize,   // Expiration time
-}
-
-
+#[derive(Default)]
 pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-     // Get current authenticated user
-     async fn me(&self, ctx: &Context<'_>) -> Result<Option<User>, AppError> {
-        if let Some(user_id) = ctx.data_opt::<String>() {
-            let user_service = UserService::new(ctx.data::<Arc<Database>>().unwrap());
-            user_service.get_user_by_id(user_id).await.map_err(|e| {
-                AppError::Database(anyhow::anyhow!("Database error: {}", e))
-            })
-        } else {
-            Ok(None)
-        }
+    async fn me<'ctx>(&self, ctx: &Context<'ctx>) -> GraphQLResult<User> {
+        let auth_user = ctx
+            .data::<AuthUser>()
+            .map_err(|_| GraphQLError::new("Not authenticated"))?;
+
+        let db = ctx
+            .data::<Arc<Database>>()
+            .map_err(|_| GraphQLError::new("Database connection error"))?;
+
+        let user_service = DbService::<DBUser>::new(db, "users");
+
+        let db_user = user_service
+            .get_record_by_id(&auth_user.id)
+            .await
+            .map_err(|e| GraphQLError::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| GraphQLError::new("User not found"))?;
+
+        Ok(User::from_db(db_user))
     }
 }

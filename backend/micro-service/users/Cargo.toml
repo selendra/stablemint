@@ -6,13 +6,17 @@ authors.workspace = true
 
 [dependencies]
 uuid = { workspace = true }
+dotenv = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 anyhow = { workspace = true }
 argon2 = { workspace = true }
 chrono = { workspace = true }
+tracing-subscriber = { workspace = true }
 async-graphql = { workspace = true }
+async-graphql-axum = { workspace = true }
 stablemint-models = { workspace = true }
 stablemint-error = { workspace = true }
 stablemint-surrealdb = { workspace = true }
 stablemint-utils = { workspace = true }
+stablemint-authentication = { workspace = true }

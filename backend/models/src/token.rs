@@ -1,8 +1,8 @@
 use std::str;
 
-use async_graphql::{SimpleObject, ID};
+use async_graphql::{ID, SimpleObject};
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 // Token balance structure (simplified for the user service)
 #[derive(SimpleObject, Clone, Serialize, Deserialize, Debug)]
@@ -25,7 +25,7 @@ pub struct TokenProfile {
 
 pub enum TokenType {
     ERC20,
-    ERC721 
+    ERC721,
 }
 
 pub struct Contract {

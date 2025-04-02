@@ -1,10 +1,10 @@
 use anyhow::Result;
 use axum::{
     extract::{FromRef, FromRequestParts},
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
-use chrono::{ Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use stablemint_error::AppError;
 use std::env;
@@ -12,11 +12,11 @@ use std::env;
 // JWT Claims structure
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,        // Subject (user ID)
-    pub exp: usize,         // Expiration time (as UTC timestamp)
-    pub iat: usize,         // Issued at (as UTC timestamp)
-    pub role: String,       // User role
-    pub address: String,    // User wallet address
+    pub sub: String,     // Subject (user ID)
+    pub exp: usize,      // Expiration time (as UTC timestamp)
+    pub iat: usize,      // Issued at (as UTC timestamp)
+    pub role: String,    // User role
+    pub address: String, // User wallet address
 }
 
 // JWT configuration
@@ -36,9 +36,7 @@ impl JwtConfig {
         let expiration_hours = env::var("JWT_EXPIRATION_HOURS")
             .unwrap_or_else(|_| "24".to_string())
             .parse::<i64>()
-            .map_err(|_| {
-                AppError::ConfigError("Invalid JWT_EXPIRATION_HOURS value".to_string())
-            })?;
+            .map_err(|_| AppError::ConfigError("Invalid JWT_EXPIRATION_HOURS value".to_string()))?;
 
         Ok(Self {
             secret,
@@ -58,10 +56,15 @@ impl JwtAuth {
     }
 
     // Generate a JWT token for a user
-    pub fn generate_token(&self, user_id: &str, role: &str, address: &str) -> Result<String, AppError> {
+    pub fn generate_token(
+        &self,
+        user_id: &str,
+        role: &str,
+        address: &str,
+    ) -> Result<String, AppError> {
         let now = Utc::now();
         let expiration = now + self.config.expiration;
-        
+
         let claims = Claims {
             sub: user_id.to_string(),
             exp: expiration.timestamp() as usize,
@@ -86,13 +89,11 @@ impl JwtAuth {
             &Validation::default(),
         )
         .map(|data| data.claims)
-        .map_err(|e| {
-            match e.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                    AppError::AuthError("Token expired".to_string())
-                }
-                _ => AppError::AuthError(format!("Invalid token: {}", e)),
+        .map_err(|e| match e.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
+                AppError::AuthError("Token expired".to_string())
             }
+            _ => AppError::AuthError(format!("Invalid token: {}", e)),
         })
     }
 
@@ -115,7 +116,6 @@ pub struct AuthUser {
     pub role: String,
     pub address: String,
 }
-
 
 impl<S> FromRequestParts<S> for AuthUser
 where
@@ -158,7 +158,9 @@ where
 }
 
 // Role-based authorization middleware
-pub fn authorize(required_role: &'static str) -> impl Fn(AuthUser) -> Result<AuthUser, (StatusCode, &'static str)> {
+pub fn authorize(
+    required_role: &'static str,
+) -> impl Fn(AuthUser) -> Result<AuthUser, (StatusCode, &'static str)> {
     move |user: AuthUser| {
         if user.role == required_role || user.role == "Admin" {
             Ok(user)
@@ -171,15 +173,14 @@ pub fn authorize(required_role: &'static str) -> impl Fn(AuthUser) -> Result<Aut
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{HeaderMap, HeaderValue, Request};
     use axum::body::Body;
     use axum::extract::FromRef;
+    use axum::http::{HeaderMap, HeaderValue, Request};
     use chrono::Utc;
-    
+
     // Mock implementation for testing
     impl FromRef<AppState> for JwtAuth {
         fn from_ref(state: &AppState) -> Self {
@@ -198,12 +199,12 @@ mod tests {
         // Setup test environment variables
         unsafe { std::env::set_var("JWT_SECRET", "test_secret_key") };
         unsafe { std::env::set_var("JWT_EXPIRATION_HOURS", "48") };
-        
+
         // Test config creation
         let config = JwtConfig::from_env().unwrap();
         assert_eq!(config.secret, "test_secret_key");
         assert_eq!(config.expiration, Duration::hours(48));
-        
+
         // Test with default expiration
         unsafe { std::env::remove_var("JWT_EXPIRATION_HOURS") };
         let config = JwtConfig::from_env().unwrap();
@@ -216,10 +217,10 @@ mod tests {
             secret: "test_secret".to_string(),
             expiration: Duration::hours(24),
         };
-        
+
         let jwt_auth = JwtAuth::new(config);
         let token = jwt_auth.generate_token("user123", "User", "0x123").unwrap();
-        
+
         // Verify token is not empty
         assert!(!token.is_empty());
     }
@@ -230,13 +231,13 @@ mod tests {
             secret: "test_secret".to_string(),
             expiration: Duration::hours(24),
         };
-        
+
         let jwt_auth = JwtAuth::new(config);
         let token = jwt_auth.generate_token("user123", "User", "0x123").unwrap();
-        
+
         // Validate the token
         let claims = jwt_auth.validate_token(&token).unwrap();
-        
+
         // Verify claims content
         assert_eq!(claims.sub, "user123");
         assert_eq!(claims.role, "User");
@@ -249,7 +250,7 @@ mod tests {
         let auth_header = "Bearer token123";
         let token = JwtAuth::extract_token_from_header(auth_header).unwrap();
         assert_eq!(token, "token123");
-        
+
         // Invalid header format
         let auth_header = "Basic token123";
         let result = JwtAuth::extract_token_from_header(auth_header);
@@ -264,30 +265,32 @@ mod tests {
             expiration: Duration::hours(24),
         };
         let jwt_auth = JwtAuth::new(config.clone());
-        
+
         // Generate token
         let token = jwt_auth.generate_token("user123", "User", "0x123").unwrap();
-        
+
         // Create app state
         let app_state = AppState { jwt_auth };
-        
+
         // Create HTTP request parts with auth header
         let mut headers = HeaderMap::new();
         headers.insert(
-            "Authorization", 
-            HeaderValue::from_str(&format!("Bearer {}", token)).unwrap()
+            "Authorization",
+            HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
         );
-        
+
         let req = Request::builder()
             .header("Authorization", format!("Bearer {}", token))
             .body(Body::empty())
             .unwrap();
-            
+
         let (mut parts, _) = req.into_parts();
-        
+
         // Extract auth user
-        let auth_user = AuthUser::from_request_parts(&mut parts, &app_state).await.unwrap();
-        
+        let auth_user = AuthUser::from_request_parts(&mut parts, &app_state)
+            .await
+            .unwrap();
+
         // Verify extracted user data
         assert_eq!(auth_user.id, "user123");
         assert_eq!(auth_user.role, "User");
@@ -302,52 +305,52 @@ mod tests {
             role: "Admin".to_string(),
             address: "0xadmin".to_string(),
         };
-        
+
         let user = AuthUser {
             id: "user123".to_string(),
             role: "User".to_string(),
             address: "0xuser".to_string(),
         };
-        
+
         let guest = AuthUser {
             id: "guest123".to_string(),
             role: "Guest".to_string(),
             address: "0xguest".to_string(),
         };
-        
+
         // Test admin access (should always work)
         let admin_fn = authorize("User");
         assert!(admin_fn(admin_user.clone()).is_ok());
-        
+
         // Test correct role
         let user_fn = authorize("User");
         assert!(user_fn(user.clone()).is_ok());
-        
+
         // Test incorrect role
         let user_fn = authorize("User");
         assert!(user_fn(guest.clone()).is_err());
     }
 
-     #[test]
+    #[test]
     fn test_token_expiration() {
         // Create a JWT validation context with expiration validation enabled
         let mut validation = Validation::default();
         validation.validate_exp = true; // Ensure expiration validation is enabled
-        validation.leeway = 0;         // No leeway to ensure strict time checking
+        validation.leeway = 0; // No leeway to ensure strict time checking
 
         // Create configuration
         let config = JwtConfig {
             secret: "test_secret".to_string(),
             expiration: Duration::hours(24),
         };
-        
+
         let jwt_auth = JwtAuth::new(config);
-        
+
         // Create claims that are definitely expired
         // Setting expiration to 1 hour in the past
         let now = Utc::now();
         let exp_time = now - Duration::hours(1);
-        
+
         let claims = Claims {
             sub: "user123".to_string(),
             exp: exp_time.timestamp() as usize,
@@ -355,28 +358,38 @@ mod tests {
             role: "User".to_string(),
             address: "0x123".to_string(),
         };
-        
+
         // Create token with expired claims
         let token = encode(
             &Header::default(),
             &claims,
             &EncodingKey::from_secret(jwt_auth.config.secret.as_bytes()),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Attempt to validate (should fail with expired token)
         let result = jwt_auth.validate_token(&token);
-        
+
         // Verify token validation fails
-        assert!(result.is_err(), "Expected token validation to fail due to expiration");
-        
+        assert!(
+            result.is_err(),
+            "Expected token validation to fail due to expiration"
+        );
+
         // Verify correct error type
         match result {
             Err(AppError::AuthError(msg)) => {
-                assert!(msg.contains("Token expired"), "Error message should mention token expiration, got: {}", msg);
-            },
-            Err(e) => panic!("Expected AuthError with 'Token expired' message, got: {:?}", e),
+                assert!(
+                    msg.contains("Token expired"),
+                    "Error message should mention token expiration, got: {}",
+                    msg
+                );
+            }
+            Err(e) => panic!(
+                "Expected AuthError with 'Token expired' message, got: {:?}",
+                e
+            ),
             Ok(_) => panic!("Expected error but token validation succeeded"),
         }
     }
-
 }

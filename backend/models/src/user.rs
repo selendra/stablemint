@@ -1,4 +1,4 @@
-use async_graphql::{Enum, InputObject, SimpleObject, ID};
+use async_graphql::{Enum, ID, InputObject, SimpleObject};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
@@ -17,11 +17,11 @@ pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<ID>,
     pub username: String,
-    #[serde(skip_serializing)]  // Don't return password in API responses
+    #[serde(skip_serializing)] // Don't return password in API responses
     pub password: String,
     pub email: String,
     pub address: String,
-    #[graphql(skip)]  // Don't expose private key in GraphQL
+    #[graphql(skip)] // Don't expose private key in GraphQL
     pub private_key: String,
     pub role: UserRole,
     pub created_at: DateTime<Utc>,

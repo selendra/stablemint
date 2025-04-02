@@ -55,4 +55,4 @@ stablemint-surrealdb = { path = "database" }
 stablemint-error = { path = "errors" }
 stablemint-models = { path = "models" }
 stablemint-utils = { path = "utils" }
-# stablemint-authentication = { path = "authentication" }
+stablemint-authentication = { path = "authentication" }
