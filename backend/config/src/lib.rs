@@ -34,54 +34,54 @@ impl DatabaseConfig {
         username: String,
         password: String,
         namespace: String,
-        database: String
+        database: String,
     ) -> Self {
         Self {
             endpoint,
             username,
             password,
             namespace,
-            database
+            database,
         }
     }
-    
+
     // Validate configuration for production use
     pub fn validate(&self) -> AppResult<()> {
         let mut errors = Vec::new();
-        
+
         // Validate endpoint
         if self.endpoint.trim().is_empty() {
             errors.push("Database endpoint cannot be empty".to_string());
         } else if !self.endpoint.starts_with("wss://") && !self.endpoint.contains("memory") {
             errors.push("Production should use a secure 'wss://' connection".to_string());
         }
-        
+
         // Validate namespace
         if self.namespace.trim().is_empty() {
             errors.push("Database namespace cannot be empty".to_string());
         }
-        
+
         // Validate database
         if self.database.trim().is_empty() {
             errors.push("Database name cannot be empty".to_string());
         }
-        
+
         // Validate credentials
         if self.username == "root" {
             errors.push("Using default 'root' username in production is insecure".to_string());
         }
-        
+
         if self.password == "root" {
             errors.push("Using default 'root' password in production is insecure".to_string());
         }
-        
+
         if !errors.is_empty() {
             return Err(AppError::ConfigError(anyhow::anyhow!(
-                "Invalid database configuration: {}", 
+                "Invalid database configuration: {}",
                 errors.join(", ")
             )));
         }
-        
+
         Ok(())
     }
 }
@@ -102,27 +102,27 @@ impl Server {
             address: env::var("ADDRESS").unwrap_or_else(|_| "0.0.0.0".to_string()),
         })
     }
-    
+
     // Validate server configuration
     pub fn validate(&self) -> AppResult<()> {
         // Validate port
         match self.port.parse::<u16>() {
-            Ok(_) => {}, // Valid port number
+            Ok(_) => {} // Valid port number
             Err(_) => {
                 return Err(AppError::ConfigError(anyhow::anyhow!(
-                    "Invalid server port: '{}' - must be a valid port number", 
+                    "Invalid server port: '{}' - must be a valid port number",
                     self.port
                 )));
             }
         }
-        
+
         // Validate address (basic check)
         if self.address.trim().is_empty() {
             return Err(AppError::ConfigError(anyhow::anyhow!(
                 "Server address cannot be empty"
             )));
         }
-        
+
         Ok(())
     }
 }

@@ -14,12 +14,12 @@ use app_models::user::User;
 async fn main() -> Result<(), AppError> {
     // Load and initialize sentry
     let sentry_config = SentryConfig::from_env().context("Failed to load sentry configuration")?;
-    
+
     // Validate sentry config in production
     if cfg!(not(debug_assertions)) {
         sentry_config.validate()?;
     }
-    
+
     let _guard = sentry::init((
         sentry_config.sentry_dsn,
         sentry::ClientOptions {
@@ -40,7 +40,7 @@ async fn main() -> Result<(), AppError> {
 
     // Load server configuration
     let config = Server::from_env().context("Failed to load server configuration")?;
-    
+
     // Validate server config in production
     if cfg!(not(debug_assertions)) {
         config.validate()?;
@@ -65,7 +65,7 @@ async fn main() -> Result<(), AppError> {
                 warn!("JWT_SECRET is set but may not be strong enough (< 32 chars)");
             }
             secret.into_bytes()
-        },
+        }
         Err(_) => {
             if cfg!(not(debug_assertions)) {
                 error!("JWT_SECRET not set in production environment!");
@@ -73,9 +73,11 @@ async fn main() -> Result<(), AppError> {
                     "JWT_SECRET environment variable is required in production"
                 )));
             }
-            
+
             warn!("JWT_SECRET not set, using fallback secret (not secure for production)");
-            "your_fallback_secret_key_for_development_only".to_string().into_bytes()
+            "your_fallback_secret_key_for_development_only"
+                .to_string()
+                .into_bytes()
         }
     };
 
