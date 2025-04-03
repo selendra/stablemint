@@ -1,0 +1,35 @@
+[package]
+name = "micro-user"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace =  true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+
+uuid = { workspace = true }
+hex = { workspace = true }
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+
+sentry = { workspace = true }
+tracing = { workspace = true }
+sentry-tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+axum = { workspace =  true }
+tower-http = { workspace =  true }
+tower = { workspace =  true }
+async-graphql = { workspace =  true }
+async-graphql-axum = { workspace =  true }
+
+app-config = { workspace =  true }
+app-database = { workspace =  true }
+app-error = { workspace =  true }
+app-models = { workspace =  true }
+app-authentication = { workspace =  true }
+
+[dev-dependencies]
+serde_json = { workspace =  true }

@@ -1,10 +1,11 @@
 [workspace]
 members = [
-    "user",
-    "config",
-    "database",
-    "models",
-    "error"
+    "micro-service/user",
+    "crates/config",
+    "crates/database",
+    "crates/models",
+    "crates/error",
+    "crates/authentication"
 ]
 
 resolver = "2"
@@ -14,26 +15,41 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
-http = "1.3.1"
-http-body = "1.0.1"
-tracing = "0.1.41"
-serde_json = "1.0.140"
+
+# utilities dependencies
+regex = "1.11.1"
 dotenv = "0.15.0"
 anyhow = "1.0.97"
 thiserror = "2.0.12"
-mockall = "0.13.1"
+lazy_static = "1.5.0"
+serde_json = "1.0.140"
+serde = { version = "1.0.219", features = ["derive"] }
+chrono = { version = "0.4.40", features = ["serde"] }
+
+# tracing dependencies
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+sentry = { version = "0.37.0", features = ["tracing"] }
+sentry-tracing = "0.37.0"
+tracing = "0.1.41"
+
+# security dependencies
+uuid = { version = "1.16.0", features = ["v4", "serde"] }
+jsonwebtoken = "9.3.1"
+argon2 = "0.5.3"
+hex = "0.4.3"
+
+# async dependencies
+async-trait = "0.1.88"
 tokio = { version = "1.44.1", features = [
     "rt",
     "rt-multi-thread",
     "macros"
 ] }
-serde = { version = "1.0.219", features = ["derive"] }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-uuid = { version = "1.16.0", features = ["v4", "serde"] }
-chrono = { version = "0.4.40", features = ["serde"] }
 
+# http dependencies
+http = "1.3.1"
+http-body = "1.0.1"
 axum = "0.8.1"
-async-trait = "0.1.88"
 async-graphql-axum = "7.0.16"
 async-graphql = { version = "7.0.16", features = ["chrono"] }
 tower = { version = "0.5.2" }
@@ -47,15 +63,15 @@ tower-http = { version = "0.6.2", features = [
     "request-id",
 ] }
 
+# database dependencies
 surrealdb = { version = "2.2.1", features = ["kv-mem"] }
-jsonwebtoken = "9.3.1"
-argon2 = "0.5.3"
-hex = "0.4.3"
-lazy_static = "1.5.0"
-sentry = { version = "0.37.0", features = ["tracing"] }
-sentry-tracing = "0.37.0"
+deadpool = "0.12.2"
 
-app-config = { path = "config" }
-app-database = { path = "database" }
-app-error = { path = "error" }
-app-models = { path = "models" }
+# local dependencies
+app-config = { path = "crates/config" }
+app-database = { path = "crates/database" }
+app-error = { path = "crates/error" }
+app-models = { path = "crates/models" }
+app-authentication = { path = "crates/authentication" }
+
+mico-user = { path = "micro-service/user" }
