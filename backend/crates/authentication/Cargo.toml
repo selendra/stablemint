@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tokio = { workspace = true }
 hex = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
@@ -14,6 +15,8 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
+regex = { workspace = true }
+lazy_static = { workspace = true }
 
 app-database = { workspace = true }
 app-error = { workspace = true }

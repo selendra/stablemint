@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{error, info};
 
-use crate::{JwtService, hash_password, verify_password};
+use crate::{password, rate_limiter::LoginRateLimiter, validation, JwtService};
 
 /// Trait defining the authentication service interface
 #[async_trait]
@@ -27,6 +27,7 @@ pub trait AuthServiceTrait: Send + Sync {
 pub struct AuthService {
     jwt_service: Arc<JwtService>,
     user_db: Option<Arc<DbService<'static, User>>>,
+    rate_limiter: Option<Arc<LoginRateLimiter>>,
 }
 
 impl AuthService {
@@ -35,6 +36,7 @@ impl AuthService {
         Self {
             jwt_service: Arc::new(JwtService::new(jwt_secret, expiry_hours)),
             user_db: None,
+            rate_limiter: None,
         }
     }
 
@@ -43,6 +45,13 @@ impl AuthService {
         self.user_db = Some(user_db);
         self
     }
+
+     // Add rate limiter
+     pub fn with_rate_limiter(mut self, rate_limiter: Arc<LoginRateLimiter>) -> Self {
+        self.rate_limiter = Some(rate_limiter);
+        self
+    }
+
 }
 
 #[async_trait]
@@ -52,17 +61,22 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn register(&self, input: RegisterInput) -> AppResult<AuthResponse> {
-        // Validate input (add more validation as needed)
-        if input.username.trim().is_empty() || input.password.trim().is_empty() {
-            return Err(AppError::ValidationError(
-                "Username and password are required".to_string(),
-            ));
-        }
+        // Sanitize and validate all inputs
+        let name = validation::sanitize_string(&input.name);
+        let username = validation::sanitize_string(&input.username);
+        let email = validation::sanitize_string(&input.email);
+        let password = input.password.clone(); // Don't trim password as it could contain meaningful spaces
+
+        // Validate each field
+        validation::validate_name(&name)?;
+        validation::validate_username(&username)?;
+        validation::validate_email(&email)?;
+        validation::validate_password(&password)?;
 
         // Check if user already exists
         if let Some(user_db) = &self.user_db {
             let existing_users = user_db
-                .get_records_by_field("username", input.username.clone())
+                .get_records_by_field("username", username.clone())
                 .await
                 .map_err(|e| {
                     error!("Database error when checking for existing user: {}", e);
@@ -76,7 +90,7 @@ impl AuthServiceTrait for AuthService {
             }
 
             let existing_emails = user_db
-                .get_records_by_field("email", input.email.clone())
+                .get_records_by_field("email", email.clone())
                 .await
                 .map_err(|e| {
                     error!("Database error when checking for existing email: {}", e);
@@ -91,22 +105,23 @@ impl AuthServiceTrait for AuthService {
         }
 
         // Hash password
-        let hashed_password = hash_password(&input.password)?;
+        let hashed_password = password::hash_password(&password)?;
 
         // Generate wallet info (in a real app this would use a crypto library)
         let address = format!("0x{}", hex::encode(uuid::Uuid::new_v4().as_bytes()));
         let private_key = format!("0x{}", hex::encode(uuid::Uuid::new_v4().as_bytes()));
 
-        // Create new user
+        // Create new user with sanitized inputs
         let user = User::new(
-            input.name,
-            input.username.clone(),
-            input.email,
+            name,
+            username.clone(),
+            email,
             hashed_password,
             address,
             private_key,
         );
 
+        // Rest of the method remains the same...
         // Store user if database is available
         let stored_user = if let Some(user_db) = &self.user_db {
             info!("Storing new user in database: {}", user.username);
@@ -142,10 +157,29 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn login(&self, input: LoginInput) -> AppResult<AuthResponse> {
+        // Sanitize inputs
+        let username = validation::sanitize_string(&input.username);
+        let password = input.password.clone(); // Don't trim password
+
+        // Basic validation
+        if username.is_empty() {
+            return Err(AppError::ValidationError("Username cannot be empty".to_string()));
+        }
+
+        if password.is_empty() {
+            return Err(AppError::ValidationError("Password cannot be empty".to_string()));
+        }
+
+        // Check rate limiting if enabled
+        if let Some(rate_limiter) = &self.rate_limiter {
+            // Use IP address or username as identifier (preferably IP in real implementation)
+            rate_limiter.check_rate_limit(&username).await?;
+        }
+
         if let Some(user_db) = &self.user_db {
             // Find user by username
             let users = user_db
-                .get_records_by_field("username", input.username.clone())
+                .get_records_by_field("username", username.clone())
                 .await
                 .map_err(|e| {
                     error!("Database error when fetching user for login: {}", e);
@@ -153,6 +187,11 @@ impl AuthServiceTrait for AuthService {
                 })?;
 
             if users.is_empty() {
+                // Record failed attempt if rate limiting is enabled
+                if let Some(rate_limiter) = &self.rate_limiter {
+                    rate_limiter.record_failed_attempt(&username).await;
+                }
+                
                 return Err(AppError::AuthenticationError(
                     "Invalid username or password".to_string(),
                 ));
@@ -161,11 +200,22 @@ impl AuthServiceTrait for AuthService {
             let user = &users[0];
 
             // Verify password
-            let is_valid = verify_password(&input.password, &user.password)?;
+            let is_valid = password::verify_password(&password, &user.password)?;
             if !is_valid {
+                // Record failed attempt if rate limiting is enabled
+                if let Some(rate_limiter) = &self.rate_limiter {
+                    rate_limiter.record_failed_attempt(&username).await;
+                }
+                
+                // For security, use the same error message as when username is not found
                 return Err(AppError::AuthenticationError(
                     "Invalid username or password".to_string(),
                 ));
+            }
+
+            // Record successful attempt if rate limiting is enabled
+            if let Some(rate_limiter) = &self.rate_limiter {
+                rate_limiter.record_successful_attempt(&username).await;
             }
 
             // Generate JWT token
