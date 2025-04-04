@@ -39,6 +39,7 @@ argon2 = "0.5.3"
 hex = "0.4.3"
 
 # async dependencies
+futures = "0.3.31"
 async-trait = "0.1.88"
 tokio = { version = "1.44.1", features = [
     "rt",
@@ -72,7 +73,6 @@ app-config = { path = "crates/config" }
 app-database = { path = "crates/database" }
 app-error = { path = "crates/error" }
 app-models = { path = "crates/models" }
-
 app-middleware = { path = "crates/middleware" }
 
 mico-user = { path = "micro-service/user" }

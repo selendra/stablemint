@@ -1,4 +1,5 @@
 pub mod middleware_handling;
+pub mod macros;
 
 use async_graphql::{Error as GraphQLError, ErrorExtensions, FieldError};
 use axum::{
@@ -237,6 +238,8 @@ pub trait AppErrorExt<T> {
     fn config_err(self) -> AppResult<T>;
     fn db_err(self) -> AppResult<T>;
     fn server_err(self) -> AppResult<T>;
+    /// Adds custom context to any error
+    fn with_context(self, context: impl AsRef<str>) -> AppResult<T>;
 }
 
 impl<T, E> AppErrorExt<T> for Result<T, E>
@@ -253,6 +256,14 @@ where
 
     fn server_err(self) -> AppResult<T> {
         self.map_err(|e| AppError::ServerError(e.into()))
+    }
+    
+    fn with_context(self, context: impl AsRef<str>) -> AppResult<T> {
+        self.map_err(|e| {
+            let err = e.into();
+            tracing::error!("{}: {}", context.as_ref(), err);
+            AppError::ServerError(anyhow::anyhow!("{}: {}", context.as_ref(), err))
+        })
     }
 }
 

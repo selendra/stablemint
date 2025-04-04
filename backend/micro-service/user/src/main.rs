@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use app_middleware::limits::login_limiter::LoginRateLimiter;
+use app_middleware::limits::rate_limiter::{create_login_rate_limiter, RateLimiter};
 use micro_user::{routes, service::AuthService};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -49,7 +49,7 @@ async fn main() -> Result<(), AppError> {
         .await;
 
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
-    let login_limiter = Arc::new(LoginRateLimiter::default());
+    let login_limiter: Arc<RateLimiter<String>> = Arc::new(create_login_rate_limiter());
 
     // Now using the Auth service from the app-auth crate
     let auth_service = Arc::new(

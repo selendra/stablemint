@@ -1,7 +1,6 @@
 use app_error::{AppError, AppResult};
 use argon2::{
-    Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString}, Argon2
 };
 use tracing::{debug, error};
 
