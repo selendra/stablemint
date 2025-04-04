@@ -22,18 +22,20 @@ use axum::{
     middleware::{self},
     routing::get,
 };
+use tower_http::limit::RequestBodyLimitLayer;
+
 
 pub fn create_routes(
-    schema: ApiSchema,
+    schema: ApiSchema, 
     auth_service: Arc<AuthService>
 ) -> Router {
     // Create JWT service
     let jwt_service = auth_service.get_jwt_service();
-    
-    // Create API rate limiter
-    let api_rate_limiter = Arc::new(ApiRateLimiter::default());
 
-    // Define global middleware stack
+     // Create API rate limiter
+     let api_rate_limiter = Arc::new(ApiRateLimiter::default());
+
+    // Define global middleware stack WITHOUT the body limit
     let middleware_stack = ServiceBuilder::new()
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
@@ -52,11 +54,14 @@ pub fn create_routes(
                 ]),
         );
 
-    // Build router with rate limiter, auth service and JWT service as extensions
+    // Build router with all middleware
     Router::new()
         .route("/", get(graphql_playground))
         .route("/health", get(health_check))
         .route("/graphql", get(graphql_playground).post(graphql_handler))
+        // Apply body limit directly to the router
+        .layer(RequestBodyLimitLayer::new(1024 * 1024)) // 1 MB limit
+        .layer(Extension(Arc::clone(&api_rate_limiter)))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&api_rate_limiter),
             api_rate_limit_middleware
