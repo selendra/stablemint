@@ -4,6 +4,7 @@ use crate::{
     schema::ApiSchema,
 };
 use std::{sync::Arc, time::Duration};
+use app_middleware::{api_rate_limiter::ApiRateLimiter, rate_limit::api_rate_limit_middleware};
 use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
@@ -22,10 +23,15 @@ use axum::{
     routing::get,
 };
 
-// Create application routes with middleware
-pub fn create_routes(schema: ApiSchema, auth_service: Arc<AuthService>) -> Router {
+pub fn create_routes(
+    schema: ApiSchema,
+    auth_service: Arc<AuthService>
+) -> Router {
     // Create JWT service
     let jwt_service = auth_service.get_jwt_service();
+    
+    // Create API rate limiter
+    let api_rate_limiter = Arc::new(ApiRateLimiter::default());
 
     // Define global middleware stack
     let middleware_stack = ServiceBuilder::new()
@@ -46,12 +52,16 @@ pub fn create_routes(schema: ApiSchema, auth_service: Arc<AuthService>) -> Route
                 ]),
         );
 
-    // Build router with auth service and JWT service as extensions
+    // Build router with rate limiter, auth service and JWT service as extensions
     Router::new()
         .route("/", get(graphql_playground))
         .route("/health", get(health_check))
         .route("/graphql", get(graphql_playground).post(graphql_handler))
-        .layer(middleware::from_fn(debug_extensions)) // Add debug middleware first
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&api_rate_limiter),
+            api_rate_limit_middleware
+        ))
+        .layer(middleware::from_fn(debug_extensions)) // Add debug middleware
         .layer(Extension(Arc::clone(&auth_service))) // Make Auth service available
         .layer(Extension(jwt_service)) // Make JWT service available
         .layer(Extension(schema)) // Extension middleware for the schema

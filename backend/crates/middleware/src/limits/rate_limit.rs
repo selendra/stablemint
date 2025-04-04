@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use axum::extract::State;
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{
@@ -16,8 +17,8 @@ use crate::api_rate_limiter::ApiRateLimiter;
 use super::api_rate_limiter::RateLimitInfo;
 
 pub async fn api_rate_limit_middleware(
+    State(rate_limiter): State<Arc<ApiRateLimiter>>,
     req: Request<Body>,
-    rate_limiter: Arc<ApiRateLimiter>,
     next: Next,
 ) -> Response {
     // Get client identifier and path

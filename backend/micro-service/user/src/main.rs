@@ -49,13 +49,13 @@ async fn main() -> Result<(), AppError> {
         .await;
 
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
-    let rate_limiter = Arc::new(LoginRateLimiter::default());
+    let login_limiter = Arc::new(LoginRateLimiter::default());
 
     // Now using the Auth service from the app-auth crate
     let auth_service = Arc::new(
         AuthService::new(&jwt_config.secret, jwt_config.expiry_hours)
             .with_db(user_db)
-            .with_rate_limiter(rate_limiter), // This method needs to be added to AuthService
+            .with_rate_limiter(login_limiter), // This method needs to be added to AuthService
     );
 
     // Create GraphQL schema
