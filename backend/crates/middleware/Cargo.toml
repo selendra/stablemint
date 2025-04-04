@@ -1,0 +1,10 @@
+[package]
+name = "app-middleware"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true }
+axum = { workspace = true }
+tracing = { workspace = true }
+app-error = { workspace = true }

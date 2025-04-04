@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{error, info};
 
-use crate::{JwtService, password, rate_limiter::LoginRateLimiter, validation};
+use crate::{JwtService, password, login_limiter::LoginRateLimiter, validation};
 
 /// Trait defining the authentication service interface
 #[async_trait]

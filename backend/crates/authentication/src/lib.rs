@@ -1,6 +1,6 @@
 pub mod jwt;
 pub mod password;
-pub mod rate_limiter;
+pub mod login_limiter;
 pub mod service;
 pub mod validation;
 

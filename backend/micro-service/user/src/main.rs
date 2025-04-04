@@ -5,7 +5,7 @@ use tokio::net::TcpListener;
 use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
-use app_authentication::{AuthService, rate_limiter::LoginRateLimiter}; // Import from the auth crate
+use app_authentication::{AuthService, login_limiter::LoginRateLimiter}; // Import from the auth crate
 use app_config::{JwtConfig, SentryConfig, Server};
 use app_database::{DB_ARC, db_connect::initialize_db, service::DbService};
 use app_error::AppError;
