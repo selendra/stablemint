@@ -1,11 +1,10 @@
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
+use app_middleware::{limits::login_limiter::LoginRateLimiter, security::password, validation, JwtService};
 use app_models::user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile};
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{error, info};
-
-use crate::{JwtService, password, login_limiter::LoginRateLimiter, validation};
 
 /// Trait defining the authentication service interface
 #[async_trait]

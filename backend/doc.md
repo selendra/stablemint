@@ -56,3 +56,6 @@ query {
   }
 }
 ```
+{
+  "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiLin6hjYjAwMTRjYi1iMjJmLTRlMjMtYTdjYS0xN2VmODNlZmFkZWbin6kiLCJleHAiOjE3NDM4NDEzMTksImlhdCI6MTc0Mzc1NDkxOSwidXNlcm5hbWUiOiJsYXluYXRoMjRzMiJ9.3SEI-HUXIUjjlcQfY_uS9LkGEkTBuSoFgtRurfuZWso"
+}

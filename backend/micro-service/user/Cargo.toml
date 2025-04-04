@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 tokio = { workspace =  true }
+async-trait = { workspace =  true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }
@@ -29,7 +30,6 @@ app-config = { workspace =  true }
 app-database = { workspace =  true }
 app-error = { workspace =  true }
 app-models = { workspace =  true }
-app-authentication = { workspace =  true }
 app-middleware = { workspace =  true }
 
 [dev-dependencies]

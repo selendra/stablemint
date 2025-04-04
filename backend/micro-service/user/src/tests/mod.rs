@@ -8,11 +8,11 @@ mod tests {
     use tokio::test;
     use tower::ServiceExt;
 
-    use crate::{routes::create_routes, schema::create_schema};
-    use app_authentication::{AuthService, service::AuthServiceTrait};
     use app_database::{DB_ARC, db_connect::initialize_memory_db, service::DbService};
     use app_models::user::{RegisterInput, User};
     use tracing::error;
+
+    use crate::{routes::create_routes, schema::create_schema, service::{AuthService, AuthServiceTrait}};
 
     async fn setup_test_environment() -> Arc<AuthService> {
         // Set up environment variables

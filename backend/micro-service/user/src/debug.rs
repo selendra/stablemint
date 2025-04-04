@@ -1,8 +1,9 @@
+use app_middleware::JwtService;
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use std::sync::Arc;
 use tracing::info;
 
-use app_authentication::{AuthService, JwtService}; // Import from auth crate
+use crate::service::AuthService; // Import from auth crate
 
 // Middleware to debug available extensions
 pub async fn debug_extensions(req: Request<Body>, next: Next) -> Response {

@@ -4,6 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+lazy_static = { workspace = true }
+regex = { workspace = true }
+argon2 = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+jsonwebtoken = { workspace = true }
+chrono = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 tracing = { workspace = true }

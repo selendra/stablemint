@@ -1,10 +1,9 @@
 use crate::{
     debug::debug_extensions,
     handlers::graphql::{graphql_handler, graphql_playground, health_check},
-    schema::ApiSchema,
+    schema::ApiSchema, service::{AuthService, AuthServiceTrait},
 };
 use std::{sync::Arc, time::Duration};
-use app_middleware::{api_rate_limiter::ApiRateLimiter, rate_limit::api_rate_limit_middleware};
 use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
@@ -13,9 +12,6 @@ use tower_http::{
     trace::TraceLayer,
 };
 
-use app_authentication::AuthService; // Import from the auth crate
-use app_authentication::service::AuthServiceTrait;
-use app_error::middleware_handling::error_handling_middleware;
 use axum::{
     Router,
     extract::Extension,
@@ -24,6 +20,8 @@ use axum::{
 };
 use tower_http::limit::RequestBodyLimitLayer;
 
+use app_middleware::{api_rate_limiter::ApiRateLimiter, rate_limit::api_rate_limit_middleware};
+use app_error::middleware_handling::error_handling_middleware;
 
 pub fn create_routes(
     schema: ApiSchema, 

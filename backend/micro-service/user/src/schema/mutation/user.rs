@@ -2,10 +2,10 @@ use async_graphql::{Context, Object, Result};
 use std::sync::Arc;
 use tracing::error;
 
-use app_authentication::AuthService;
-use app_authentication::service::AuthServiceTrait;
 use app_error::AppError;
 use app_models::user::{AuthResponse, LoginInput, RegisterInput};
+
+use crate::service::{AuthService, AuthServiceTrait};
 
 pub struct UserMutation;
 
