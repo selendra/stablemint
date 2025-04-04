@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{error, info};
 
-use crate::{password, rate_limiter::LoginRateLimiter, validation, JwtService};
+use crate::{JwtService, password, rate_limiter::LoginRateLimiter, validation};
 
 /// Trait defining the authentication service interface
 #[async_trait]
@@ -46,12 +46,11 @@ impl AuthService {
         self
     }
 
-     // Add rate limiter
-     pub fn with_rate_limiter(mut self, rate_limiter: Arc<LoginRateLimiter>) -> Self {
+    // Add rate limiter
+    pub fn with_rate_limiter(mut self, rate_limiter: Arc<LoginRateLimiter>) -> Self {
         self.rate_limiter = Some(rate_limiter);
         self
     }
-
 }
 
 #[async_trait]
@@ -84,8 +83,9 @@ impl AuthServiceTrait for AuthService {
                 })?;
 
             if !existing_users.is_empty() {
-                return Err(AppError::ValidationError(
-                    "Username already taken".to_string(),
+                return Err(AppError::ResourceExistsError(
+                    "This username is already registered. Please choose a different username."
+                        .to_string(),
                 ));
             }
 
@@ -163,11 +163,15 @@ impl AuthServiceTrait for AuthService {
 
         // Basic validation
         if username.is_empty() {
-            return Err(AppError::ValidationError("Username cannot be empty".to_string()));
+            return Err(AppError::ValidationError(
+                "Username cannot be empty".to_string(),
+            ));
         }
 
         if password.is_empty() {
-            return Err(AppError::ValidationError("Password cannot be empty".to_string()));
+            return Err(AppError::ValidationError(
+                "Password cannot be empty".to_string(),
+            ));
         }
 
         // Check rate limiting if enabled
@@ -191,9 +195,9 @@ impl AuthServiceTrait for AuthService {
                 if let Some(rate_limiter) = &self.rate_limiter {
                     rate_limiter.record_failed_attempt(&username).await;
                 }
-                
+
                 return Err(AppError::AuthenticationError(
-                    "Invalid username or password".to_string(),
+                    "Login failed: The username or password you entered is incorrect".to_string(),
                 ));
             }
 
@@ -206,10 +210,10 @@ impl AuthServiceTrait for AuthService {
                 if let Some(rate_limiter) = &self.rate_limiter {
                     rate_limiter.record_failed_attempt(&username).await;
                 }
-                
+
                 // For security, use the same error message as when username is not found
                 return Err(AppError::AuthenticationError(
-                    "Invalid username or password".to_string(),
+                    "Login failed: The username or password you entered is incorrect".to_string(),
                 ));
             }
 
@@ -320,13 +324,16 @@ pub mod mocks {
                 .iter()
                 .find(|u| u.username == input.username)
                 .ok_or_else(|| {
-                    AppError::AuthenticationError("Invalid username or password".to_string())
+                    AppError::AuthenticationError(
+                        "Login failed: The username or password you entered is incorrect"
+                            .to_string(),
+                    )
                 })?;
 
             // In mock, we don't verify the password, we just check equality
             if user.password != input.password {
                 return Err(AppError::AuthenticationError(
-                    "Invalid username or password".to_string(),
+                    "Login failed: The username or password you entered is incorrect".to_string(),
                 ));
             }
 

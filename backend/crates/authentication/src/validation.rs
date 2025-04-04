@@ -1,6 +1,6 @@
 use app_error::{AppError, AppResult};
-use regex::Regex;
 use lazy_static::lazy_static;
+use regex::Regex;
 
 lazy_static! {
     // Email validation regex
@@ -26,7 +26,9 @@ lazy_static! {
 /// Validates a username
 pub fn validate_username(username: &str) -> AppResult<()> {
     if username.trim().is_empty() {
-        return Err(AppError::ValidationError("Username cannot be empty".to_string()));
+        return Err(AppError::ValidationError(
+            "Username cannot be empty".to_string(),
+        ));
     }
 
     if !USERNAME_REGEX.is_match(username) {
@@ -41,11 +43,15 @@ pub fn validate_username(username: &str) -> AppResult<()> {
 /// Validates an email address
 pub fn validate_email(email: &str) -> AppResult<()> {
     if email.trim().is_empty() {
-        return Err(AppError::ValidationError("Email cannot be empty".to_string()));
+        return Err(AppError::ValidationError(
+            "Email cannot be empty".to_string(),
+        ));
     }
 
     if !EMAIL_REGEX.is_match(email) {
-        return Err(AppError::ValidationError("Invalid email format".to_string()));
+        return Err(AppError::ValidationError(
+            "Invalid email format".to_string(),
+        ));
     }
 
     Ok(())
@@ -54,15 +60,21 @@ pub fn validate_email(email: &str) -> AppResult<()> {
 /// Validates a name
 pub fn validate_name(name: &str) -> AppResult<()> {
     if name.trim().is_empty() {
-        return Err(AppError::ValidationError("Name cannot be empty".to_string()));
+        return Err(AppError::ValidationError(
+            "Name cannot be empty".to_string(),
+        ));
     }
 
     if name.trim().len() < 2 {
-        return Err(AppError::ValidationError("Name must be at least 2 characters long".to_string()));
+        return Err(AppError::ValidationError(
+            "Name must be at least 2 characters long".to_string(),
+        ));
     }
 
     if name.trim().len() > 100 {
-        return Err(AppError::ValidationError("Name cannot exceed 100 characters".to_string()));
+        return Err(AppError::ValidationError(
+            "Name cannot exceed 100 characters".to_string(),
+        ));
     }
 
     Ok(())
@@ -71,11 +83,15 @@ pub fn validate_name(name: &str) -> AppResult<()> {
 /// Validates a password
 pub fn validate_password(password: &str) -> AppResult<()> {
     if password.trim().is_empty() {
-        return Err(AppError::ValidationError("Password cannot be empty".to_string()));
+        return Err(AppError::ValidationError(
+            "Password cannot be empty".to_string(),
+        ));
     }
 
     if password.len() < 8 {
-        return Err(AppError::ValidationError("Password must be at least 8 characters long".to_string()));
+        return Err(AppError::ValidationError(
+            "Password must be at least 8 characters long".to_string(),
+        ));
     }
 
     if !STRONG_PASSWORD_REGEX.is_match(password) {

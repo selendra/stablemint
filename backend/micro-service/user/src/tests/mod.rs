@@ -360,7 +360,7 @@ mod tests {
             json_response["errors"][0]["message"]
                 .as_str()
                 .unwrap()
-                .contains("Not authenticated"),
+                .contains("Authentication required"),
             "Error should indicate authentication failure"
         );
 
@@ -422,7 +422,7 @@ mod tests {
             json_response["errors"][0]["message"]
                 .as_str()
                 .unwrap()
-                .contains("Not authenticated"),
+                .contains("Authentication required"),
             "Error should indicate authentication failure"
         );
 

@@ -1,8 +1,8 @@
 pub mod jwt;
 pub mod password;
+pub mod rate_limiter;
 pub mod service;
 pub mod validation;
-pub mod rate_limiter;
 
 // Re-export key items for convenience
 pub use jwt::{Claims, JwtService};

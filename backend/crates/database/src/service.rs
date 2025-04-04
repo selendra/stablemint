@@ -435,8 +435,9 @@ where
             .map_err(|e| {
                 if let AppError::DatabaseError(err) = e {
                     AppError::DatabaseError(anyhow::anyhow!(
-                        "{}: {}",
-                        self.context_msg("read by ID"),
+                        "Failed to fetch {} with ID '{}': {}",
+                        self.table_name,
+                        record_id,
                         err
                     ))
                 } else {

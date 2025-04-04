@@ -5,7 +5,7 @@ use tokio::net::TcpListener;
 use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
-use app_authentication::{rate_limiter::LoginRateLimiter, AuthService}; // Import from the auth crate
+use app_authentication::{AuthService, rate_limiter::LoginRateLimiter}; // Import from the auth crate
 use app_config::{JwtConfig, SentryConfig, Server};
 use app_database::{DB_ARC, db_connect::initialize_db, service::DbService};
 use app_error::AppError;
@@ -55,7 +55,7 @@ async fn main() -> Result<(), AppError> {
     let auth_service = Arc::new(
         AuthService::new(&jwt_config.secret, jwt_config.expiry_hours)
             .with_db(user_db)
-            .with_rate_limiter(rate_limiter)  // This method needs to be added to AuthService
+            .with_rate_limiter(rate_limiter), // This method needs to be added to AuthService
     );
 
     // Create GraphQL schema

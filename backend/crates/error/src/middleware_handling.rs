@@ -42,7 +42,11 @@ pub async fn error_handling_middleware(
         let error_response = ErrorResponse {
             status: status.to_string(),
             message: "An internal server error occurred".to_string(),
+            code: "SERVER_ERROR".to_string(),
             details: None,
+            help: Some(
+                "Please try again later or contact support if the issue persists.".to_string(),
+            ),
         };
 
         return Ok(Response::builder()
