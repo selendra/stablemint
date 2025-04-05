@@ -74,5 +74,8 @@
             "format": "text",
             "hide_secrets": true
         }
+    },
+    "bodylimit": {
+        "user": 1048576
     }
 }

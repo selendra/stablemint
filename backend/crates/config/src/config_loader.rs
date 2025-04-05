@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub security: SecurityConfig,
     pub monitoring: MonitoringConfig,
+    pub bodylimit: BodyLimitConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -121,6 +122,12 @@ pub struct LoggingConfig {
     pub format: String,
     pub hide_secrets: bool,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BodyLimitConfig {
+    pub user: usize,
+}
+
 
 
 impl AppConfig {
@@ -294,6 +301,9 @@ impl Default for AppConfig {
                     hide_secrets: true,
                 },
             },
+            bodylimit: BodyLimitConfig {
+                user: 1048576, // 1MB
+            },
         }
     }
 }
@@ -386,6 +396,9 @@ mod tests {
                     "format": "text",
                     "hide_secrets": true
                 }
+            },
+            "bodylimit": {
+                "user": 1048576
             }
         }"#;
         
