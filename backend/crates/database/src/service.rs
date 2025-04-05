@@ -1,6 +1,7 @@
 use crate::{ConnectionPool, Database, PooledConnection};
 
 use anyhow::Context;
+use app_config::AppConfig;
 use serde::{Deserialize, Serialize};
 use std::{sync::Mutex, marker::PhantomData, time::Duration};
 use surrealdb::{engine::any::Any, opt::auth::Root};
@@ -87,7 +88,6 @@ impl ConnectionPool {
     }
 }
 
-// Secure credentials structure that doesn't implement Debug/Display
 #[derive(Clone)]
 pub struct DbCredentials {
     username: String,
@@ -102,7 +102,17 @@ impl DbCredentials {
         }
     }
 
+    // This method is kept for backward compatibility, but we'll rely on the new method
     pub fn from_env() -> AppResult<Self> {
+        // Try to load from config first
+        if let Ok(config) = AppConfig::load() {
+            return Ok(Self {
+                username: config.database.username,
+                password: config.database.password,
+            });
+        }
+        
+        // Fall back to environment variables
         Ok(Self {
             username: std::env::var("SURREALDB_USERNAME").context("Missing SURREALDB_USERNAME")?,
             password: std::env::var("SURREALDB_PASSWORD").context("Missing SURREALDB_PASSWORD")?,

@@ -4,7 +4,7 @@ mod tests {
         http::{Request, StatusCode, header},
     };
     use serde_json::{Value, json};
-    use std::{env, sync::Arc};
+    use std::sync::Arc;
     use tokio::test;
     use tower::ServiceExt;
 
@@ -15,12 +15,6 @@ mod tests {
     use crate::{routes::create_routes, schema::create_schema, service::{AuthService, AuthServiceTrait}};
 
     async fn setup_test_environment() -> Arc<AuthService> {
-        // Set up environment variables
-        unsafe { env::set_var("DB_NAMESPACE", "test_namespace") };
-        unsafe { env::set_var("DB_NAME", "test_db") };
-        unsafe { env::set_var("SURREALDB_USERNAME", "test_user") };
-        unsafe { env::set_var("SURREALDB_PASSWORD", "test_password") };
-        unsafe { env::set_var("DB_POOL_SIZE", "5") };
 
         let db_arc = DB_ARC
             .get_or_init(|| async {
@@ -62,7 +56,6 @@ mod tests {
 
         // Check the response
         assert_eq!(response.status(), StatusCode::OK);
-        cleanup();
     }
 
     #[ignore]
@@ -136,7 +129,6 @@ mod tests {
             data["user"]["email"], "test@example.com",
             "Email should match input"
         );
-        cleanup();
     }
 
     #[ignore]
@@ -222,8 +214,6 @@ mod tests {
             data["user"]["email"], "logintest@example.com",
             "Email should match registered user"
         );
-
-        cleanup();
     }
 
     #[ignore]
@@ -302,8 +292,6 @@ mod tests {
             data["email"], "mequery@example.com",
             "Email should match registered user"
         );
-
-        cleanup();
     }
 
     #[test]
@@ -363,8 +351,6 @@ mod tests {
                 .contains("Authentication required"),
             "Error should indicate authentication failure"
         );
-
-        cleanup();
     }
 
     #[test]
@@ -425,17 +411,5 @@ mod tests {
                 .contains("Authentication required"),
             "Error should indicate authentication failure"
         );
-
-        cleanup();
-    }
-
-    // Clean up function to reset environment after tests
-    fn cleanup() {
-        unsafe { env::remove_var("DB_ENDPOINT") };
-        unsafe { env::remove_var("DB_NAMESPACE") };
-        unsafe { env::remove_var("DB_NAME") };
-        unsafe { env::remove_var("SURREALDB_USERNAME") };
-        unsafe { env::remove_var("SURREALDB_PASSWORD") };
-        unsafe { env::remove_var("DB_POOL_SIZE") };
     }
 }

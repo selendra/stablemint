@@ -1,0 +1,78 @@
+{
+    "environment": "development",
+    "database": {
+        "endpoint": "ws://test-db:8000",
+        "username": "root",
+        "password": "root",
+        "namespace": "root_db",
+        "database": "cryptoBank",
+        "pool": {
+            "size": 5,
+            "connection_timeout": 3000
+        }
+    },
+    "server": {
+        "host": "127.0.0.1",
+        "port": 4000,
+        "timeouts": {
+            "read": 20000,
+            "write": 20000,
+            "idle": 40000,
+            "keep_alive": 10000
+        },
+        "body_limit": 2097152
+    },
+    "security": {
+        "jwt": {
+            "secret": "my-secret-key",
+            "expiry_hours": 12,
+            "algorithm": "HS256"
+        },
+        "cors": {
+            "allowed_origins": ["http://localhost:3000"],
+            "allowed_methods": ["GET", "POST"],
+            "allowed_headers": ["Content-Type"]
+        },
+        "rate_limiting": {
+            "api": {
+                "max_attempts": 50,
+                "window_duration": 30,
+                "block_duration": null
+            },
+            "login": {
+                "max_attempts": 3,
+                "window_duration": 150,
+                "block_duration": 300
+            },
+            "paths": {
+                "/test": 5
+            }
+        },
+        "password": {
+            "min_length": 10,
+            "require_uppercase": true,
+            "require_lowercase": true,
+            "require_number": true,
+            "require_special": true,
+            "argon2": {
+                "variant": "argon2id",
+                "memory": 32768,
+                "iterations": 2,
+                "parallelism": 2
+            }
+        }
+    },
+    "monitoring": {
+        "sentry": {
+            "dsn": "https://test-dsn@sentry.io/123",
+            "sample_rate": 0.5,
+            "traces_sample_rate": 0.1,
+            "environment": "development"
+        },
+        "logging": {
+            "level": "debug",
+            "format": "text",
+            "hide_secrets": true
+        }
+    }
+}

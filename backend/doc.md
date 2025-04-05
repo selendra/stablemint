@@ -19,6 +19,13 @@ mutation {
     }
   }
 }
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "mutation { register(input: { name: \"LayNath242\", username: \"laynath242\", email: \"laynath242@example.com\", password: \"@Securepassword123\" }) { token user { id name username email address createdAt } } }"
+  }' \
+  http://127.0.0.1:3000/graphql
 ```
 
 2. Login:

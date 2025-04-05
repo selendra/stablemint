@@ -1,9 +1,14 @@
-use anyhow::Result;
-use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
-use std::env;
-
 use app_error::{AppError, AppResult};
+
+// Include the config loader module
+mod config_loader;
+pub use config_loader::*;
+
+/// The simplified configuration system uses only JSON configuration files
+/// and doesn't rely on environment variables.
+/// 
+/// This module provides the core configuration types and loading functions.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
@@ -15,21 +20,7 @@ pub struct DatabaseConfig {
 }
 
 impl DatabaseConfig {
-    pub fn from_env() -> Result<Self> {
-        // Load .env file only once per process
-        dotenv().ok();
-
-        Ok(Self {
-            endpoint: env::var("SURREALDB_ENDPOINT")
-                .unwrap_or_else(|_| "ws://localhost:8000".to_string()),
-            username: env::var("SURREALDB_USERNAME").unwrap_or_else(|_| "root".to_string()),
-            password: env::var("SURREALDB_PASSWORD").unwrap_or_else(|_| "root".to_string()),
-            namespace: env::var("SURREALDB_NAMESPACE").unwrap_or_else(|_| "selendraDb".to_string()),
-            database: env::var("SURREALDB_DATABASE").unwrap_or_else(|_| "cryptoBank".to_string()),
-        })
-    }
-
-    pub fn new_direct(
+    pub fn new(
         endpoint: String,
         username: String,
         password: String,
@@ -88,62 +79,31 @@ impl DatabaseConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Server {
-    pub port: String,
+    pub port: u16,
     pub address: String,
 }
 
 impl Server {
-    pub fn from_env() -> Result<Self> {
-        // Load .env file only once per process
-        dotenv().ok();
-
-        Ok(Self {
-            port: env::var("PORT").unwrap_or_else(|_| "3000".to_string()),
-            address: env::var("ADDRESS").unwrap_or_else(|_| "0.0.0.0".to_string()),
-        })
+    pub fn new(address: String, port: u16) -> Self {
+        Self {
+            port,
+            address,
+        }
     }
 
     // Validate server configuration
     pub fn validate(&self) -> AppResult<()> {
         // Validate port
-        match self.port.parse::<u16>() {
-            Ok(_) => {} // Valid port number
-            Err(_) => {
-                return Err(AppError::ConfigError(anyhow::anyhow!(
-                    "Invalid server port: '{}' - must be a valid port number",
-                    self.port
-                )));
-            }
+        if self.port == 0 {
+            return Err(AppError::ConfigError(anyhow::anyhow!(
+                "Invalid server port: '0' is not a valid port number"
+            )));
         }
 
         // Validate address (basic check)
         if self.address.trim().is_empty() {
             return Err(AppError::ConfigError(anyhow::anyhow!(
                 "Server address cannot be empty"
-            )));
-        }
-
-        Ok(())
-    }
-}
-
-pub struct SentryConfig {
-    pub sentry_dsn: String,
-}
-
-impl SentryConfig {
-    pub fn from_env() -> Result<Self> {
-        dotenv().ok();
-
-        Ok(Self {
-            sentry_dsn: env::var("SENTRY_DSN")?,
-        })
-    }
-
-    pub fn validate(&self) -> AppResult<()> {
-        if cfg!(not(debug_assertions)) && self.sentry_dsn.trim().is_empty() {
-            return Err(AppError::ConfigError(anyhow::anyhow!(
-                "Sentry DSN should be configured in production for error monitoring"
             )));
         }
 
@@ -158,28 +118,46 @@ pub struct JwtConfig {
 }
 
 impl JwtConfig {
-    pub fn from_env() -> Result<Self> {
-        dotenv().ok();
-
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
-            if cfg!(debug_assertions) {
-                // Generate a random secret for development only
-                use uuid::Uuid;
-                Uuid::new_v4().to_string()
-            } else {
-                // In production, fail if JWT_SECRET is not set
-                panic!("JWT_SECRET must be set in production. Application cannot start securely without it.");
-            }
-        }).into_bytes();
-
-        let expiry_hours = env::var("JWT_EXPIRY_HOURS")
-            .unwrap_or_else(|_| "24".to_string())
-            .parse::<u64>()
-            .unwrap_or(24);
-
-        Ok(Self {
-            secret,
+    pub fn new(secret: &[u8], expiry_hours: u64) -> Self {
+        Self {
+            secret: secret.to_vec(),
             expiry_hours,
-        })
+        }
+    }
+}
+
+/// Helper function for backward compatibility
+/// Converts from the new AppConfig to the legacy DatabaseConfig
+impl From<&AppConfig> for DatabaseConfig {
+    fn from(config: &AppConfig) -> Self {
+        Self {
+            endpoint: config.database.endpoint.clone(),
+            username: config.database.username.clone(),
+            password: config.database.password.clone(),
+            namespace: config.database.namespace.clone(),
+            database: config.database.database.clone(),
+        }
+    }
+}
+
+/// Helper function for backward compatibility
+/// Converts from the new AppConfig to the legacy Server config
+impl From<&AppConfig> for Server {
+    fn from(config: &AppConfig) -> Self {
+        Self {
+            port: config.server.port,
+            address: config.server.host.clone(),
+        }
+    }
+}
+
+/// Helper function for backward compatibility
+/// Converts from the new AppConfig to the legacy JwtConfig
+impl From<&AppConfig> for JwtConfig {
+    fn from(config: &AppConfig) -> Self {
+        Self {
+            secret: config.security.jwt.secret.clone().into_bytes(),
+            expiry_hours: config.security.jwt.expiry_hours,
+        }
     }
 }
