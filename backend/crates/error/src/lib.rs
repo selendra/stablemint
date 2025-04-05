@@ -1,5 +1,4 @@
 pub mod middleware_handling;
-pub mod macros;
 
 use async_graphql::{Error as GraphQLError, ErrorExtensions, FieldError};
 use axum::{
