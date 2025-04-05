@@ -181,11 +181,11 @@ pub async fn security_headers_middleware(
         HeaderValue::from_static("strict-origin-when-cross-origin")
     );
     
-    // Content Security Policy - adjust as needed
-    headers.insert(
-        "Content-Security-Policy", 
-        HeaderValue::from_static("default-src 'self'; script-src 'self'; connect-src 'self';")
-    );
+    // // Content Security Policy - adjust as needed
+    // headers.insert(
+    //     "Content-Security-Policy", 
+    //     HeaderValue::from_static("default-src 'self'; script-src 'self'; connect-src 'self';")
+    // );
     
     response
 }
