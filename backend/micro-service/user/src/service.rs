@@ -1,10 +1,6 @@
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
-use app_middleware::{
-    security::password, 
-    validation, 
-    JwtService, RedisLoginRateLimiter
-};
+use app_middleware::{JwtService, RedisLoginRateLimiter, security::password, validation};
 use app_models::user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -44,7 +40,7 @@ impl ValidationInput {
             password: input.password,
         }
     }
-    
+
     fn from_login_input(input: LoginInput) -> Self {
         Self {
             name: String::new(), // Not used for login
@@ -53,7 +49,7 @@ impl ValidationInput {
             password: input.password,
         }
     }
-    
+
     // Validate all fields for registration
     fn validate_registration(&self) -> AppResult<()> {
         validation::validate_name(&self.name)?;
@@ -62,7 +58,7 @@ impl ValidationInput {
         validation::validate_password(&self.password)?;
         Ok(())
     }
-    
+
     // Validate for login (only username and password)
     fn validate_login(&self) -> AppResult<()> {
         if self.username.is_empty() {
@@ -76,7 +72,7 @@ impl ValidationInput {
                 "Password cannot be empty".to_string(),
             ));
         }
-        
+
         Ok(())
     }
 }
@@ -110,7 +106,6 @@ impl AuthService {
         self
     }
 
-    
     // Helper method to check if a user with the given username or email exists
     async fn check_user_exists<'a>(&self, username: &'a str, email: &'a str) -> AppResult<()> {
         if let Some(user_db) = &self.user_db {
@@ -151,10 +146,10 @@ impl AuthService {
                 "Database not available"
             )));
         }
-        
+
         Ok(())
     }
-    
+
     // Helper method to get user by username
     async fn get_user_by_username(&self, username: &str) -> AppResult<User> {
         if let Some(user_db) = &self.user_db {
@@ -179,7 +174,7 @@ impl AuthService {
             )))
         }
     }
-    
+
     // Helper method to create authentication response
     fn create_auth_response(&self, user: &User) -> AppResult<AuthResponse> {
         // Generate JWT token
@@ -195,10 +190,13 @@ impl AuthService {
             user: profile,
         })
     }
-    
+
     // Helper to format user ID correctly
     fn clean_user_id(user_id: &str) -> String {
-        user_id.trim_start_matches('⟨').trim_end_matches('⟩').to_string()
+        user_id
+            .trim_start_matches('⟨')
+            .trim_end_matches('⟩')
+            .to_string()
     }
 }
 
@@ -212,9 +210,10 @@ impl AuthServiceTrait for AuthService {
         // Extract and validate input
         let input = ValidationInput::from_register_input(input);
         input.validate_registration()?;
-        
+
         // Check if user already exists
-        self.check_user_exists(&input.username, &input.email).await?;
+        self.check_user_exists(&input.username, &input.email)
+            .await?;
 
         // Hash password
         let hashed_password = password::hash_password(&input.password)?;
@@ -279,7 +278,7 @@ impl AuthServiceTrait for AuthService {
                         // Optionally, you could decide whether to proceed or return the error
                     }
                 }
-                
+
                 return Err(e);
             }
         };

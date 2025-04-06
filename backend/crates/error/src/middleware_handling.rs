@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{header, Request, Response, StatusCode},
+    http::{Request, Response, StatusCode, header},
     middleware::Next,
     response::IntoResponse,
 };
@@ -34,10 +34,10 @@ pub async fn error_handling_middleware(
 
     // Handle specific error conditions
     let status = response.status();
-    
+
     if status == StatusCode::PAYLOAD_TOO_LARGE {
         error!("Request body too large: {}", status);
-        
+
         let error_response = ErrorResponse {
             status: status.to_string(),
             message: "The request body exceeds the maximum allowed size".to_string(),
@@ -52,7 +52,7 @@ pub async fn error_handling_middleware(
             .body(Body::from(serde_json::to_string(&error_response).unwrap()))
             .unwrap());
     }
-    
+
     if status.is_server_error() {
         error!("Server error occurred: {}", status);
 
@@ -61,7 +61,9 @@ pub async fn error_handling_middleware(
             message: "An internal server error occurred".to_string(),
             code: "SERVER_ERROR".to_string(),
             details: None,
-            help: Some("Please try again later or contact support if the issue persists".to_string()),
+            help: Some(
+                "Please try again later or contact support if the issue persists".to_string(),
+            ),
         };
 
         return Ok(Response::builder()

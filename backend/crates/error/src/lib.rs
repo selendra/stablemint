@@ -29,19 +29,91 @@ pub enum AppError {
 // Mapping between error types and HTTP status codes/messages
 // Extracting this to a constant avoids duplication
 const ERROR_MAPPINGS: &[(&str, StatusCode, &str, &str, Option<&str>)] = &[
-    ("ConfigError", StatusCode::INTERNAL_SERVER_ERROR, "CONFIG_ERROR", "System configuration error", None),
-    ("DatabaseError", StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR", "Database operation failed", None),
-    ("ValidationError", StatusCode::BAD_REQUEST, "VALIDATION_ERROR", "", Some("Please review your input and try again.")),
-    ("NotFoundError", StatusCode::NOT_FOUND, "NOT_FOUND", "", Some("The requested resource was not found.")),
-    ("AuthenticationError", StatusCode::UNAUTHORIZED, "AUTH_ERROR", "", Some("Please log in to access this resource.")),
-    ("AuthorizationError", StatusCode::FORBIDDEN, "FORBIDDEN", "", Some("You don't have permission to access this resource.")),
-    ("RateLimitError", StatusCode::TOO_MANY_REQUESTS, "RATE_LIMIT", "", Some("Please try again later.")),
-    ("InputError", StatusCode::BAD_REQUEST, "INPUT_ERROR", "", Some("Invalid input provided.")),
-    ("CryptoError", StatusCode::INTERNAL_SERVER_ERROR, "CRYPTO_ERROR", "Encryption error", None),
-    ("NetworkError", StatusCode::SERVICE_UNAVAILABLE, "NETWORK_ERROR", "Network error", None),
-    ("ResourceExistsError", StatusCode::CONFLICT, "RESOURCE_EXISTS", "", Some("The resource already exists.")),
+    (
+        "ConfigError",
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "CONFIG_ERROR",
+        "System configuration error",
+        None,
+    ),
+    (
+        "DatabaseError",
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "DB_ERROR",
+        "Database operation failed",
+        None,
+    ),
+    (
+        "ValidationError",
+        StatusCode::BAD_REQUEST,
+        "VALIDATION_ERROR",
+        "",
+        Some("Please review your input and try again."),
+    ),
+    (
+        "NotFoundError",
+        StatusCode::NOT_FOUND,
+        "NOT_FOUND",
+        "",
+        Some("The requested resource was not found."),
+    ),
+    (
+        "AuthenticationError",
+        StatusCode::UNAUTHORIZED,
+        "AUTH_ERROR",
+        "",
+        Some("Please log in to access this resource."),
+    ),
+    (
+        "AuthorizationError",
+        StatusCode::FORBIDDEN,
+        "FORBIDDEN",
+        "",
+        Some("You don't have permission to access this resource."),
+    ),
+    (
+        "RateLimitError",
+        StatusCode::TOO_MANY_REQUESTS,
+        "RATE_LIMIT",
+        "",
+        Some("Please try again later."),
+    ),
+    (
+        "InputError",
+        StatusCode::BAD_REQUEST,
+        "INPUT_ERROR",
+        "",
+        Some("Invalid input provided."),
+    ),
+    (
+        "CryptoError",
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "CRYPTO_ERROR",
+        "Encryption error",
+        None,
+    ),
+    (
+        "NetworkError",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "NETWORK_ERROR",
+        "Network error",
+        None,
+    ),
+    (
+        "ResourceExistsError",
+        StatusCode::CONFLICT,
+        "RESOURCE_EXISTS",
+        "",
+        Some("The resource already exists."),
+    ),
     // Default case for ServerError and others
-    ("", StatusCode::INTERNAL_SERVER_ERROR, "SERVER_ERROR", "Internal server error", None),
+    (
+        "",
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "SERVER_ERROR",
+        "Internal server error",
+        None,
+    ),
 ];
 
 impl AppError {
@@ -117,38 +189,38 @@ impl AppError {
             resource
         ))
     }
-    
+
     // Helper to get error details based on error type
     fn get_error_details(&self) -> (StatusCode, String, String, Option<String>) {
         let error_type = self.error_type_name();
-        
+
         // Find matching error mapping
         for &(err_type, status, code, default_msg, help) in ERROR_MAPPINGS {
             if err_type == error_type {
                 let message = match self {
-                    Self::ValidationError(msg) | 
-                    Self::NotFoundError(msg) | 
-                    Self::AuthenticationError(msg) | 
-                    Self::AuthorizationError(msg) | 
-                    Self::RateLimitError(msg) |
-                    Self::InputError(msg) |
-                    Self::CryptoError(msg) |
-                    Self::NetworkError(msg) |
-                    Self::ResourceExistsError(msg) => msg.clone(),
+                    Self::ValidationError(msg)
+                    | Self::NotFoundError(msg)
+                    | Self::AuthenticationError(msg)
+                    | Self::AuthorizationError(msg)
+                    | Self::RateLimitError(msg)
+                    | Self::InputError(msg)
+                    | Self::CryptoError(msg)
+                    | Self::NetworkError(msg)
+                    | Self::ResourceExistsError(msg) => msg.clone(),
                     _ => default_msg.to_string(),
                 };
-                
+
                 return (status, code.to_string(), message, help.map(String::from));
             }
         }
-        
+
         // Default case
         let (_, status, code, default_msg, help) = ERROR_MAPPINGS.last().unwrap();
         (
-            *status, 
-            code.to_string(), 
-            default_msg.to_string(), 
-            help.map(String::from)
+            *status,
+            code.to_string(),
+            default_msg.to_string(),
+            help.map(String::from),
         )
     }
 }
@@ -256,7 +328,7 @@ where
     fn server_err(self) -> AppResult<T> {
         self.map_err(|e| AppError::ServerError(e.into()))
     }
-    
+
     fn with_context(self, context: impl AsRef<str>) -> AppResult<T> {
         self.map_err(|e| {
             let err = e.into();
@@ -270,41 +342,39 @@ impl AppError {
     // Convert AppError to a GraphQL FieldError with appropriate extensions
     pub fn to_field_error(&self) -> FieldError {
         let (_, error_code, message, help) = self.get_error_details();
-        
+
         let mut error = FieldError::new(message);
 
         // Add appropriate extensions based on error type
         error = error.extend_with(|_, e| {
             e.set("code", error_code);
-            
+
             // Add help text if available
             if let Some(help_text) = help {
                 e.set("help", help_text);
             }
-            
+
             // Add detailed message for debugging
             match self {
-                Self::ConfigError(err) | 
-                Self::DatabaseError(err) | 
-                Self::ServerError(err) => {
+                Self::ConfigError(err) | Self::DatabaseError(err) | Self::ServerError(err) => {
                     if cfg!(debug_assertions) {
                         e.set("details", format!("{:?}", err));
                     }
-                },
-                Self::ValidationError(msg) | 
-                Self::NotFoundError(msg) | 
-                Self::AuthenticationError(msg) | 
-                Self::AuthorizationError(msg) |
-                Self::RateLimitError(msg) |
-                Self::InputError(msg) |
-                Self::CryptoError(msg) |
-                Self::NetworkError(msg) |
-                Self::ResourceExistsError(msg) => {
+                }
+                Self::ValidationError(msg)
+                | Self::NotFoundError(msg)
+                | Self::AuthenticationError(msg)
+                | Self::AuthorizationError(msg)
+                | Self::RateLimitError(msg)
+                | Self::InputError(msg)
+                | Self::CryptoError(msg)
+                | Self::NetworkError(msg)
+                | Self::ResourceExistsError(msg) => {
                     e.set("details", msg);
-                },
+                }
                 Self::GraphQLError(err) => {
                     e.set("details", format!("{:?}", err));
-                },
+                }
             }
         });
 

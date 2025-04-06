@@ -92,12 +92,14 @@ pub fn validate_password(password: &str) -> AppResult<()> {
             "Password must be at least 8 characters long".to_string(),
         ));
     }
-    
+
     let has_lowercase = password.chars().any(|c| c.is_ascii_lowercase());
     let has_uppercase = password.chars().any(|c| c.is_ascii_uppercase());
     let has_digit = password.chars().any(|c| c.is_ascii_digit());
-    let has_special = password.chars().any(|c| matches!(c, '@' | '$' | '!' | '%' | '*' | '?' | '&'));
-    
+    let has_special = password
+        .chars()
+        .any(|c| matches!(c, '@' | '$' | '!' | '%' | '*' | '?' | '&'));
+
     if !has_lowercase || !has_uppercase || !has_digit || !has_special {
         return Err(AppError::ValidationError(
             "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)".to_string()

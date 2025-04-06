@@ -3,7 +3,7 @@ use crate::{ConnectionPool, Database, PooledConnection};
 use anyhow::Context;
 use app_config::AppConfig;
 use serde::{Deserialize, Serialize};
-use std::{sync::Mutex, marker::PhantomData, time::Duration};
+use std::{marker::PhantomData, sync::Mutex, time::Duration};
 use surrealdb::{engine::any::Any, opt::auth::Root};
 use tokio::time::timeout;
 
@@ -19,7 +19,7 @@ impl ConnectionPool {
     }
 
     /// Get a connection from the pool or create a new one if needed
-    /// 
+    ///
     /// This optimized implementation:
     /// - Uses a single lock operation
     /// - Validates connections before returning them
@@ -63,17 +63,15 @@ impl ConnectionPool {
                 let new_conn = conn_result
                     .context("Failed to connect to database")
                     .db_err()?;
-                
+
                 Ok(PooledConnection {
                     conn: Some(new_conn),
                     pool: self,
                 })
             }
-            Err(_) => {
-                Err(AppError::DatabaseError(anyhow::anyhow!(
-                    "Database connection timeout - could not establish connection within 5 seconds"
-                )))
-            }
+            Err(_) => Err(AppError::DatabaseError(anyhow::anyhow!(
+                "Database connection timeout - could not establish connection within 5 seconds"
+            ))),
         }
     }
 
@@ -111,7 +109,7 @@ impl DbCredentials {
                 password: config.database.password,
             });
         }
-        
+
         // Fall back to environment variables
         Ok(Self {
             username: std::env::var("SURREALDB_USERNAME").context("Missing SURREALDB_USERNAME")?,
@@ -406,30 +404,37 @@ where
 
     // Create a new record
     pub async fn create_record(&self, item: T) -> AppResult<Option<T>> {
-        self.execute_db_operation("create", async { 
-            self.db.create(&self.table_name).content(item).await 
-        }).await
+        self.execute_db_operation("create", async {
+            self.db.create(&self.table_name).content(item).await
+        })
+        .await
     }
 
     // Update a record
     pub async fn update_record(&self, record_id: &str, updated_data: T) -> AppResult<Option<T>> {
         self.execute_db_operation("update", async {
-            self.db.update((&self.table_name, record_id)).content(updated_data).await
-        }).await
+            self.db
+                .update((&self.table_name, record_id))
+                .content(updated_data)
+                .await
+        })
+        .await
     }
 
     // Delete a record
     pub async fn delete_record(&self, record_id: &str) -> AppResult<Option<T>> {
         self.execute_db_operation("delete", async {
             self.db.delete((&self.table_name, record_id)).await
-        }).await
+        })
+        .await
     }
 
     // Get a record by its ID
     pub async fn get_record_by_id(&self, record_id: &str) -> AppResult<Option<T>> {
         self.execute_db_operation("fetch", async {
             self.db.select((&self.table_name, record_id)).await
-        }).await
+        })
+        .await
     }
 
     // Validate identifier for SQL injection prevention
@@ -466,13 +471,16 @@ where
         })?;
 
         self.execute_db_operation("query", async {
-            let response = self.db.query(&sql)
+            let response = self
+                .db
+                .query(&sql)
                 .bind(("value", value_json))
                 .r#await()
                 .await?;
-            
+
             response.take(0).await
-        }).await
+        })
+        .await
     }
 
     // Enhanced bulk operations with transaction semantics
@@ -484,7 +492,7 @@ where
         // Use a more efficient approach with proper transaction semantics
         self.execute_db_operation("bulk create", async {
             let mut results = Vec::with_capacity(items.len());
-            
+
             // In a real implementation, you'd use a transaction here
             // For now, we'll execute each create operation
             for item in items {
@@ -496,19 +504,29 @@ where
                     }
                 }
             }
-            
+
             Ok(results)
-        }).await
+        })
+        .await
     }
 
     // More efficient and safer custom query execution
-    pub async fn run_custom_query(&self, sql: &str, bindings: Vec<(String, serde_json::Value)>) -> AppResult<Vec<T>> {
+    pub async fn run_custom_query(
+        &self,
+        sql: &str,
+        bindings: Vec<(String, serde_json::Value)>,
+    ) -> AppResult<Vec<T>> {
         // Log the query for security auditing (without parameter values)
         tracing::debug!("Executing custom query on {}: {}", self.table_name, sql);
 
         // Improved SQL injection check with more patterns
-        if sql.contains("${") || sql.contains("'+") || sql.contains("'+") || 
-           sql.contains("--") || sql.contains(";") || sql.contains("/*") {
+        if sql.contains("${")
+            || sql.contains("'+")
+            || sql.contains("'+")
+            || sql.contains("--")
+            || sql.contains(";")
+            || sql.contains("/*")
+        {
             return Err(AppError::ValidationError(
                 "Custom SQL queries must use parameterized queries ($param) for security".into(),
             ));
@@ -533,31 +551,41 @@ where
             response.take(0).await
         }).await
     }
-    
+
     // New method: Execute a query with count for pagination
-    pub async fn query_with_count(&self, sql: &str, bindings: Vec<(String, serde_json::Value)>) -> AppResult<(Vec<T>, u64)> {
+    pub async fn query_with_count(
+        &self,
+        sql: &str,
+        bindings: Vec<(String, serde_json::Value)>,
+    ) -> AppResult<(Vec<T>, u64)> {
         // First validate the SQL
-        if sql.contains("${") || sql.contains("'+") || sql.contains("'+") || 
-           sql.contains("--") || sql.contains(";") || sql.contains("/*") {
+        if sql.contains("${")
+            || sql.contains("'+")
+            || sql.contains("'+")
+            || sql.contains("--")
+            || sql.contains(";")
+            || sql.contains("/*")
+        {
             return Err(AppError::ValidationError(
                 "Custom SQL queries must use parameterized queries ($param) for security".into(),
             ));
         }
-        
-        // Add a COUNT query 
-        let count_sql = format!("SELECT count() FROM {} WHERE {}", 
-            self.table_name, 
+
+        // Add a COUNT query
+        let count_sql = format!(
+            "SELECT count() FROM {} WHERE {}",
+            self.table_name,
             // Extract WHERE clause if it exists
             sql.split_once("WHERE ")
                 .map(|(_, clause)| clause)
                 .unwrap_or("true")
         );
-        
+
         self.execute_db_operation("query with count", async {
             // Setup queries
             let mut data_query = self.db.query(sql);
             let mut count_query = self.db.query(&count_sql);
-            
+
             // Add bindings to both queries
             for (name, value) in bindings.clone() {
                 // Validate parameter names
@@ -575,21 +603,20 @@ where
             // Execute both queries
             let data_response = data_query.r#await().await?;
             let count_response = count_query.r#await().await?;
-            
             // Extract the count
             let count: Vec<serde_json::Value> = count_response.take(0).await?;
             let total_count = count.first()
                 .and_then(|v| v.get("count"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
-                
+
             // Extract the data
             let data = data_response.take(0).await?;
-            
+
             Ok((data, total_count))
         }).await
     }
-    
+
     // New method: Transaction support
     pub async fn transaction<F, R>(&self, operations: F) -> AppResult<R>
     where
@@ -598,11 +625,15 @@ where
     {
         // Get a connection from the pool
         let conn = self.db.get_connection().await?;
-        
+
         // Begin transaction
-        conn.get_ref().query("BEGIN TRANSACTION").await
-            .map_err(|e| AppError::DatabaseError(anyhow::anyhow!("Failed to begin transaction: {}", e)))?;
-        
+        conn.get_ref()
+            .query("BEGIN TRANSACTION")
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(anyhow::anyhow!("Failed to begin transaction: {}", e))
+            })?;
+
         // Execute operations
         let result = match operations(self).await {
             Ok(res) => {
@@ -613,10 +644,13 @@ where
                         tracing::error!("Failed to commit transaction: {}", e);
                         // Try to rollback on commit failure
                         let _ = conn.get_ref().query("ROLLBACK TRANSACTION").await;
-                        Err(AppError::DatabaseError(anyhow::anyhow!("Failed to commit transaction: {}", e)))
+                        Err(AppError::DatabaseError(anyhow::anyhow!(
+                            "Failed to commit transaction: {}",
+                            e
+                        )))
                     }
                 }
-            },
+            }
             Err(e) => {
                 // Rollback transaction
                 tracing::warn!("Rolling back transaction due to error: {}", e);
@@ -624,22 +658,26 @@ where
                 Err(e)
             }
         };
-        
+
         result
     }
-    
+
     pub async fn batch_operation<I, F, R>(&self, items: Vec<I>, operation: F) -> AppResult<Vec<R>>
     where
         I: Clone + Send + Sync + 'static,
         //               ^^^^
         // Add Sync constraint to type I as suggested by the compiler
         R: Send + 'static,
-        F: Fn(I) -> std::pin::Pin<Box<dyn Future<Output = AppResult<R>> + Send>> + Send + Sync + Copy + 'static,
+        F: Fn(I) -> std::pin::Pin<Box<dyn Future<Output = AppResult<R>> + Send>>
+            + Send
+            + Sync
+            + Copy
+            + 'static,
     {
         if items.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         // For small batches, just process sequentially
         if items.len() < 10 {
             let mut results = Vec::with_capacity(items.len());
@@ -648,27 +686,31 @@ where
             }
             return Ok(results);
         }
-        
+
         // For larger batches, process in parallel with transaction
-        self.transaction(|_| Box::pin(async move {
-            // Process in chunks of 50 to avoid overwhelming the database
-            let chunk_size = 50;
-            let mut results = Vec::with_capacity(items.len());
-            
-            for chunk in items.chunks(chunk_size) {
-                // Process each chunk in parallel
-                let chunk_results = futures::future::join_all(
-                    chunk.iter().cloned().map(|item| operation(item))
-                ).await;
-                
-                // Check for errors and collect results
-                for result in chunk_results {
-                    results.push(result?);
+        self.transaction(|_| {
+            Box::pin(async move {
+                // Process in chunks of 50 to avoid overwhelming the database
+                let chunk_size = 50;
+                let mut results = Vec::with_capacity(items.len());
+
+                for chunk in items.chunks(chunk_size) {
+                    // Process each chunk in parallel
+                    let chunk_results = futures::future::join_all(
+                        chunk.iter().cloned().map(|item| operation(item)),
+                    )
+                    .await;
+
+                    // Check for errors and collect results
+                    for result in chunk_results {
+                        results.push(result?);
+                    }
                 }
-            }
-            
-            Ok(results)
-        })).await
+
+                Ok(results)
+            })
+        })
+        .await
     }
 }
 

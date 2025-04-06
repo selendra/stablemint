@@ -1,9 +1,8 @@
-
 use async_graphql::{Context, FieldError, Object, Result};
 use std::sync::Arc;
 
-use app_middleware::Claims;
 use app_error::AppError;
+use app_middleware::Claims;
 use app_models::user::UserProfile;
 
 use crate::service::{AuthService, AuthServiceTrait};

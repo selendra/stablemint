@@ -3,7 +3,7 @@
 
 use crate::{
     handlers::graphql::{graphql_handler, graphql_playground, health_check},
-    schema::ApiSchema, 
+    schema::ApiSchema,
     service::{AuthService, AuthServiceTrait},
 };
 use std::{sync::Arc, time::Duration};
@@ -15,25 +15,22 @@ use tower_http::{
     trace::TraceLayer,
 };
 
-use axum::{
-    Router,
-    extract::Extension,
-    routing::get,
-};
+use axum::{Router, extract::Extension, routing::get};
 use tower_http::limit::RequestBodyLimitLayer;
 
+use app_error::middleware_handling::error_handling_middleware;
 use app_middleware::{
     api_middleware::{
-        api_rate_limit_middleware, jwt_auth_middleware, logging_middleware, security_headers_middleware
+        api_rate_limit_middleware, jwt_auth_middleware, logging_middleware,
+        security_headers_middleware,
     },
-    limits::rate_limiter::RedisApiRateLimiter
+    limits::rate_limiter::RedisApiRateLimiter,
 };
-use app_error::middleware_handling::error_handling_middleware;
 
 pub fn create_routes(
-    schema: ApiSchema, 
+    schema: ApiSchema,
     auth_service: Arc<AuthService>,
-    api_rate_limiter: Arc<RedisApiRateLimiter>
+    api_rate_limiter: Arc<RedisApiRateLimiter>,
 ) -> Router {
     // Create JWT service
     let jwt_service = auth_service.get_jwt_service();
@@ -82,8 +79,14 @@ pub fn create_routes(
 
     // Use with_state method instead of direct middleware application
     let app = app
-        .layer(axum::middleware::from_fn_with_state(api_rate_limiter.clone(), api_rate_limit_middleware))
-        .layer(axum::middleware::from_fn_with_state(jwt_service, jwt_auth_middleware));
+        .layer(axum::middleware::from_fn_with_state(
+            api_rate_limiter.clone(),
+            api_rate_limit_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            jwt_service,
+            jwt_auth_middleware,
+        ));
 
     // Apply global middleware stack
     app.layer(middleware_stack)

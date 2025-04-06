@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use app_error::{AppError, AppResult};
+use serde::{Deserialize, Serialize};
 
 // Include the config loader module
 mod config_loader;
@@ -7,7 +7,7 @@ pub use config_loader::*;
 
 /// The simplified configuration system uses only JSON configuration files
 /// and doesn't rely on environment variables.
-/// 
+///
 /// This module provides the core configuration types and loading functions.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,10 +85,7 @@ pub struct Server {
 
 impl Server {
     pub fn new(address: String, port: u16) -> Self {
-        Self {
-            port,
-            address,
-        }
+        Self { port, address }
     }
 
     // Validate server configuration

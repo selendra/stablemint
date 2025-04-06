@@ -1,6 +1,6 @@
 use app_error::{AppError, AppResult};
 use chrono::{Duration, Utc};
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Algorithm, Validation, decode, encode};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
@@ -61,16 +61,15 @@ impl JwtService {
         validation.validate_exp = true;
         validation.validate_nbf = true;
         validation.required_spec_claims = std::collections::HashSet::from([
-            "exp".to_string(), 
-            "iat".to_string(), 
-            "sub".to_string()
+            "exp".to_string(),
+            "iat".to_string(),
+            "sub".to_string(),
         ]);
 
-        let token_data = decode::<Claims>(token, &self.decoding_key, &validation)
-            .map_err(|e| {
-                error!("Token validation failed: {}", e);
-                AppError::AuthenticationError(format!("Invalid token: {}", e))
-            })?;
+        let token_data = decode::<Claims>(token, &self.decoding_key, &validation).map_err(|e| {
+            error!("Token validation failed: {}", e);
+            AppError::AuthenticationError(format!("Invalid token: {}", e))
+        })?;
 
         debug!("Token validated for user: {}", token_data.claims.username);
         Ok(token_data.claims)
@@ -174,18 +173,18 @@ mod tests {
         let secret = b"test_secret_key_for_testing_purposes_only";
         let hs256_service = JwtService::new(secret, 10);
         let hs384_service = JwtService::new(secret, 10).with_algorithm(Algorithm::HS384);
-        
+
         let user_id = "user123";
         let username = "testuser";
-        
+
         // Generate tokens with different algorithms
         let hs256_token = hs256_service.generate_token(user_id, username).unwrap();
         let hs384_token = hs384_service.generate_token(user_id, username).unwrap();
-        
+
         // Validate with matching algorithms should succeed
         assert!(hs256_service.validate_token(&hs256_token).is_ok());
         assert!(hs384_service.validate_token(&hs384_token).is_ok());
-        
+
         // Validate with non-matching algorithms should fail
         assert!(hs256_service.validate_token(&hs384_token).is_err());
         assert!(hs384_service.validate_token(&hs256_token).is_err());
@@ -218,8 +217,8 @@ mod tests {
         // Create a header with explicit algorithm
         let header = Header::new(Algorithm::HS256);
 
-        let token = encode(&header, &claims, &jwt_service.encoding_key)
-            .expect("Failed to encode token");
+        let token =
+            encode(&header, &claims, &jwt_service.encoding_key).expect("Failed to encode token");
 
         let result = jwt_service.validate_token(&token);
         assert!(result.is_err(), "Expired token should fail validation");

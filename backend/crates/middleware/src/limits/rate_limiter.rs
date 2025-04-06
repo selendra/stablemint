@@ -1,6 +1,6 @@
 use app_error::{AppError, AppResult};
 use chrono::Utc;
-use redis::{aio::ConnectionManager, AsyncCommands, Client, Pipeline};
+use redis::{AsyncCommands, Client, Pipeline, aio::ConnectionManager};
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -17,7 +17,7 @@ pub struct RateLimitStatus {
     pub attempts: usize,
     pub limit: usize,
     pub remaining: usize,
-    pub window_reset: i64, // Seconds until window resets
+    pub window_reset: i64,        // Seconds until window resets
     pub block_reset: Option<i64>, // Seconds until block ends, if blocked
     pub is_blocked: bool,
 }
@@ -111,11 +111,7 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
     }
 
     /// Check if the identifier has exceeded rate limits, with a custom path
-    pub async fn check_rate_limit_for_path(
-        &self,
-        identifier: &T,
-        path: &str,
-    ) -> AppResult<()> {
+    pub async fn check_rate_limit_for_path(&self, identifier: &T, path: &str) -> AppResult<()> {
         // Get the path-specific limit or use default
         let limit = self.get_limit_for_path(path);
 
@@ -123,7 +119,8 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
         let mut path_config = self.config.clone();
         path_config.max_attempts = limit;
 
-        self.check_rate_limit_with_config(identifier, &path_config).await
+        self.check_rate_limit_with_config(identifier, &path_config)
+            .await
     }
 
     /// Check if the identifier has exceeded rate limits with a specific config
@@ -167,7 +164,10 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
             .query_async(&mut conn)
             .await
             .map_err(|e| {
-                error!("Redis pipeline error when getting count and timestamp: {}", e);
+                error!(
+                    "Redis pipeline error when getting count and timestamp: {}",
+                    e
+                );
                 AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
             })?;
 
@@ -272,7 +272,8 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
 
     /// Check if the identifier has exceeded rate limits (using default config)
     pub async fn check_rate_limit(&self, identifier: &T) -> AppResult<()> {
-        self.check_rate_limit_with_config(identifier, &self.config).await
+        self.check_rate_limit_with_config(identifier, &self.config)
+            .await
     }
 
     /// Record a failed attempt for the identifier
@@ -376,7 +377,8 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
 
     /// Get current rate limit status for an identifier
     pub async fn get_limit_status(&self, identifier: &T) -> Option<RateLimitStatus> {
-        self.get_limit_status_with_config(identifier, &self.config).await
+        self.get_limit_status_with_config(identifier, &self.config)
+            .await
     }
 
     /// Get current rate limit status for an identifier with a specific path
@@ -392,7 +394,8 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
         let mut path_config = self.config.clone();
         path_config.max_attempts = limit;
 
-        self.get_limit_status_with_config(identifier, &path_config).await
+        self.get_limit_status_with_config(identifier, &path_config)
+            .await
     }
 
     /// Get current rate limit status for an identifier with a specific config
@@ -482,7 +485,7 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
     /// Clean up old entries if needed
     async fn cleanup_if_needed(&self) {
         let now = Instant::now();
-        
+
         // Use try_write to avoid blocking if another task is doing cleanup
         if let Ok(mut last_cleanup) = self.last_cleanup.try_write() {
             if now.duration_since(*last_cleanup) >= self.cleanup_interval {
@@ -540,23 +543,22 @@ pub async fn create_redis_login_rate_limiter(redis_url: &str) -> AppResult<Redis
         .with_cleanup_interval(Duration::from_secs(300)))
 }
 
-
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use tokio::time::{sleep, Duration as TokioDuration};
     use std::env;
+    use tokio::time::{Duration as TokioDuration, sleep};
     use uuid::Uuid;
 
     // This test requires a running Redis server
     // It will be skipped if REDIS_URL environment variable is not set
     #[tokio::test]
     async fn test_rate_limiter_integration() {
-        let redis_url =  "http://localhost:6379";
+        let redis_url = "http://localhost:6379";
 
         // Create a unique test identifier to avoid collision with other tests
         let test_id = format!("test-{}", Uuid::new_v4());
-        
+
         // Create a configuration with small durations for testing
         let config = RateLimitConfig {
             max_attempts: 3,
@@ -599,7 +601,7 @@ mod integration_tests {
         // Fourth attempt should fail and trigger blocking
         let result = rate_limiter.check_rate_limit(&test_id).await;
         assert!(result.is_err(), "Fourth attempt should fail");
-        
+
         if let Err(AppError::RateLimitError(msg)) = result {
             assert!(msg.contains("Test rate limit exceeded"));
             assert!(msg.contains("Try again in 5 seconds"));
@@ -627,58 +629,85 @@ mod integration_tests {
         // Check window expiry
         // Reset the counter
         let _ = rate_limiter.record_successful_attempt(&test_id, true).await;
-        
+
         // Make two attempts
         let _ = rate_limiter.check_rate_limit(&test_id).await;
         let _ = rate_limiter.check_rate_limit(&test_id).await;
-        
+
         // Wait for window to expire
         sleep(TokioDuration::from_secs(4)).await;
-        
+
         // Even after two attempts, should be able to make max_attempts more
         // since the window has expired
         for i in 0..3 {
             let result = rate_limiter.check_rate_limit(&test_id).await;
-            assert!(result.is_ok(), "Attempt {} after window expiry should succeed", i+1);
+            assert!(
+                result.is_ok(),
+                "Attempt {} after window expiry should succeed",
+                i + 1
+            );
         }
-        
+
         // Fourth attempt should fail again
         let result = rate_limiter.check_rate_limit(&test_id).await;
-        assert!(result.is_err(), "Fourth attempt after window expiry should fail");
+        assert!(
+            result.is_err(),
+            "Fourth attempt after window expiry should fail"
+        );
 
         // Test path-specific limits
         let path_limits = {
             let mut map = HashMap::new();
             map.insert("/api/sensitive".to_string(), 1); // Only 1 attempt allowed
-            map.insert("/api/normal".to_string(), 5);    // 5 attempts allowed
+            map.insert("/api/normal".to_string(), 5); // 5 attempts allowed
             map
         };
-        
+
         let rate_limiter = rate_limiter.with_path_limits(path_limits);
-        
+
         // Create a new test ID for path testing
         let path_test_id = format!("test-path-{}", Uuid::new_v4());
-        
+
         // For sensitive path, only 1 attempt should be allowed
-        let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/sensitive").await;
-        assert!(result.is_ok(), "First attempt on sensitive path should succeed");
-        
-        let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/sensitive").await;
-        assert!(result.is_err(), "Second attempt on sensitive path should fail");
-        
+        let result = rate_limiter
+            .check_rate_limit_for_path(&path_test_id, "/api/sensitive")
+            .await;
+        assert!(
+            result.is_ok(),
+            "First attempt on sensitive path should succeed"
+        );
+
+        let result = rate_limiter
+            .check_rate_limit_for_path(&path_test_id, "/api/sensitive")
+            .await;
+        assert!(
+            result.is_err(),
+            "Second attempt on sensitive path should fail"
+        );
+
         // For normal path, 5 attempts should be allowed
         for i in 0..5 {
-            let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/normal").await;
-            assert!(result.is_ok(), "Attempt {} on normal path should succeed", i+1);
+            let result = rate_limiter
+                .check_rate_limit_for_path(&path_test_id, "/api/normal")
+                .await;
+            assert!(
+                result.is_ok(),
+                "Attempt {} on normal path should succeed",
+                i + 1
+            );
         }
-        
-        let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/normal").await;
+
+        let result = rate_limiter
+            .check_rate_limit_for_path(&path_test_id, "/api/normal")
+            .await;
         assert!(result.is_err(), "Sixth attempt on normal path should fail");
 
         // Clean up after test
         let _ = rate_limiter.record_successful_attempt(&test_id, true).await;
-        let _ = rate_limiter.record_successful_attempt(&path_test_id, true).await;
-        
+        let _ = rate_limiter
+            .record_successful_attempt(&path_test_id, true)
+            .await;
+
         println!("Integration test completed successfully");
     }
 
@@ -696,7 +725,7 @@ mod integration_tests {
         let path_limits = {
             let mut map = HashMap::new();
             map.insert("/api/high_traffic".to_string(), 200); // 200 requests per minute
-            map.insert("/api/low_traffic".to_string(), 50);   // 50 requests per minute
+            map.insert("/api/low_traffic".to_string(), 50); // 50 requests per minute
             map
         };
 
@@ -710,7 +739,7 @@ mod integration_tests {
 
         // Verify default limit is 100
         assert_eq!(api_limiter.config.max_attempts, 100);
-        
+
         // Verify path-specific limits
         assert_eq!(api_limiter.get_limit_for_path("/api/high_traffic"), 200);
         assert_eq!(api_limiter.get_limit_for_path("/api/low_traffic"), 50);
@@ -741,11 +770,19 @@ mod integration_tests {
 
         // Verify login limiter settings
         assert_eq!(login_limiter.config.max_attempts, 5);
-        assert_eq!(login_limiter.config.window_duration, Duration::from_secs(300));
         assert_eq!(
-            login_limiter.config.block_duration, 
+            login_limiter.config.window_duration,
+            Duration::from_secs(300)
+        );
+        assert_eq!(
+            login_limiter.config.block_duration,
             Some(Duration::from_secs(900))
         );
-        assert!(login_limiter.config.message_template.contains("login attempts"));
+        assert!(
+            login_limiter
+                .config
+                .message_template
+                .contains("login attempts")
+        );
     }
 }
