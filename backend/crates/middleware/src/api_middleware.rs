@@ -172,10 +172,10 @@ pub async fn security_headers_middleware(req: Request<Body>, next: Next) -> Resp
         HeaderValue::from_static("1; mode=block"),
     );
 
-    headers.insert(
-        "Referrer-Policy",
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
-    );
+    // headers.insert(
+    //     "Referrer-Policy",
+    //     HeaderValue::from_static("strict-origin-when-cross-origin"),
+    // );
 
     response
 }

@@ -79,7 +79,7 @@
         "user": 1048576
     },
      "redis": {
-        "url": "redis://0.0.0.0:6379",
+        "url": "redis://:redis_secure_password@0.0.0.0:6379",
         "pool_size": 10,
         "connection_timeout": 5000,
         "prefix": "app"
