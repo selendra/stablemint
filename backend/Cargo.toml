@@ -5,7 +5,8 @@ members = [
     "crates/database",
     "crates/models",
     "crates/error",
-    "crates/middleware"
+    "crates/middleware",
+    "tests"
 ]
 
 resolver = "2"
@@ -76,4 +77,4 @@ app-error = { path = "crates/error" }
 app-models = { path = "crates/models" }
 app-middleware = { path = "crates/middleware" }
 
-mico-user = { path = "micro-service/user" }
+micro-user = { path = "micro-service/user" }
