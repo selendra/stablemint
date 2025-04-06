@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 app-error = { workspace = true }
-app-config = { workspace = true }
 
 lazy_static = { workspace = true }
 regex = { workspace = true }

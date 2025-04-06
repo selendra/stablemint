@@ -5,11 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
-dotenv = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-uuid = { workspace = true }
 app-error = { workspace = true }
 
 [dev-dependencies]

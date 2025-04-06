@@ -7,13 +7,10 @@ edition = "2024"
 tokio = { workspace =  true }
 async-trait = { workspace =  true }
 anyhow = { workspace = true }
-serde = { workspace = true }
 chrono = { workspace = true }
 
 uuid = { workspace = true }
 hex = { workspace = true }
-jsonwebtoken = { workspace = true }
-argon2 = { workspace = true }
 
 sentry = { workspace = true }
 tracing = { workspace = true }
