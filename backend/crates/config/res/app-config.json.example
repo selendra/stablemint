@@ -4,8 +4,8 @@
         "endpoint": "ws://test-db:8000",
         "username": "root",
         "password": "root",
-        "namespace": "root_db",
-        "database": "cryptoBank",
+        "namespace": "surrealdb",
+        "database": "surrealdb",
         "pool": {
             "size": 5,
             "connection_timeout": 3000
@@ -77,5 +77,12 @@
     },
     "bodylimit": {
         "user": 1048576
+    },
+     "redis": {
+        "url": "redis://127.0.0.1:6379",
+        "pool_size": 10,
+        "connection_timeout": 5000,
+        "prefix": "app"
     }
+}
 }

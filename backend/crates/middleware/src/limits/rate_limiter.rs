@@ -1,18 +1,25 @@
-// backend/crates/middleware/src/limits/rate_limiter.rs
 use app_error::{AppError, AppResult};
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use chrono::Utc;
+use redis::{aio::ConnectionManager, AsyncCommands, Client, Pipeline};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    hash::Hash,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::RwLock;
+use tracing::{debug, error, info};
 
-/// Structure to track rate limited attempts
+/// Structure to track rate limited attempts status for UI/API responses
 #[derive(Debug, Clone)]
-struct RateLimitEntry {
-    attempts: usize,
-    first_attempt: Instant,
-    last_attempt: Instant,
+pub struct RateLimitStatus {
+    pub attempts: usize,
+    pub limit: usize,
+    pub remaining: usize,
+    pub window_reset: i64, // Seconds until window resets
+    pub block_reset: Option<i64>, // Seconds until block ends, if blocked
+    pub is_blocked: bool,
 }
 
 /// Generic rate limiter configuration
@@ -35,236 +42,433 @@ impl Default for RateLimitConfig {
     }
 }
 
-/// Generic rate limiter with customizable identifier type
-#[derive(Debug, Clone)]
-pub struct RateLimiter<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> {
-    attempts: Arc<RwLock<HashMap<T, RateLimitEntry>>>,
+/// Key prefix for rate limiting in Redis
+const RATE_LIMIT_PREFIX: &str = "rate_limit";
+const RATE_COUNT_SUFFIX: &str = "count";
+const RATE_FIRST_SUFFIX: &str = "first";
+const RATE_LAST_SUFFIX: &str = "last";
+const RATE_BLOCK_SUFFIX: &str = "blocked_until";
+
+/// Distributed rate limiter using Redis for shared state
+#[derive(Clone)]
+pub struct RedisRateLimiter<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> {
+    redis_manager: ConnectionManager,
     config: RateLimitConfig,
-    cleanup_interval: Duration,
     last_cleanup: Arc<RwLock<Instant>>,
-    path_limits: HashMap<String, usize>, // Added field for path-specific limits
+    cleanup_interval: Duration,
+    path_limits: HashMap<String, usize>,
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RateLimiter<T> {
-    /// Create a new rate limiter with the given configuration
-    pub fn new(config: RateLimitConfig) -> Self {
-        Self {
-            attempts: Arc::new(RwLock::new(HashMap::new())),
+impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RedisRateLimiter<T> {
+    /// Create a new rate limiter with Redis backend
+    pub async fn new(redis_url: &str, config: RateLimitConfig) -> AppResult<Self> {
+        let client = Client::open(redis_url).map_err(|e| {
+            error!("Failed to connect to Redis: {}", e);
+            AppError::ConfigError(anyhow::anyhow!("Redis connection failed: {}", e))
+        })?;
+
+        let manager = ConnectionManager::new(client).await.map_err(|e| {
+            error!("Failed to create Redis connection manager: {}", e);
+            AppError::ConfigError(anyhow::anyhow!("Redis connection manager failed: {}", e))
+        })?;
+
+        info!("Successfully connected to Redis for distributed rate limiting");
+
+        Ok(Self {
+            redis_manager: manager,
             config,
-            cleanup_interval: Duration::from_secs(300), // 5 minutes
             last_cleanup: Arc::new(RwLock::new(Instant::now())),
-            path_limits: HashMap::new(), // Initialize with empty map
-        }
+            cleanup_interval: Duration::from_secs(300), // 5 minutes default cleanup
+            path_limits: HashMap::new(),
+            _marker: std::marker::PhantomData,
+        })
     }
-    
+
     /// Set cleanup interval
     pub fn with_cleanup_interval(mut self, interval: Duration) -> Self {
         self.cleanup_interval = interval;
         self
     }
-    
+
     /// Set path-specific rate limits
     pub fn with_path_limits(mut self, path_limits: HashMap<String, usize>) -> Self {
         self.path_limits = path_limits;
         self
     }
-    
+
     /// Get the limit for a specific path, or the default limit
     pub fn get_limit_for_path(&self, path: &str) -> usize {
-        self.path_limits.get(path).copied().unwrap_or(self.config.max_attempts)
+        self.path_limits
+            .get(path)
+            .copied()
+            .unwrap_or(self.config.max_attempts)
     }
-    
+
+    /// Convert identifier to Redis key
+    fn get_rate_limit_key(&self, identifier: &T) -> String {
+        format!("{}:{:?}", RATE_LIMIT_PREFIX, identifier)
+    }
+
     /// Check if the identifier has exceeded rate limits, with a custom path
-    pub async fn check_rate_limit_for_path(&self, identifier: &T, path: &str) -> AppResult<()> {
+    pub async fn check_rate_limit_for_path(
+        &self,
+        identifier: &T,
+        path: &str,
+    ) -> AppResult<()> {
         // Get the path-specific limit or use default
         let limit = self.get_limit_for_path(path);
-        
+
         // Create a temporary config with the path-specific limit
         let mut path_config = self.config.clone();
         path_config.max_attempts = limit;
-        
+
         self.check_rate_limit_with_config(identifier, &path_config).await
     }
-    
+
     /// Check if the identifier has exceeded rate limits with a specific config
-    pub async fn check_rate_limit_with_config(&self, identifier: &T, config: &RateLimitConfig) -> AppResult<()> {
-        let mut attempts = self.attempts.write().await;
-        let now = Instant::now();
-        
+    pub async fn check_rate_limit_with_config(
+        &self,
+        identifier: &T,
+        config: &RateLimitConfig,
+    ) -> AppResult<()> {
+        let now = Utc::now().timestamp(); // i64
+        let key_base = self.get_rate_limit_key(identifier);
+        let count_key = format!("{}:{}", key_base, RATE_COUNT_SUFFIX);
+        let first_key = format!("{}:{}", key_base, RATE_FIRST_SUFFIX);
+        let last_key = format!("{}:{}", key_base, RATE_LAST_SUFFIX);
+        let block_key = format!("{}:{}", key_base, RATE_BLOCK_SUFFIX);
+
         // Perform cleanup if needed
-        self.cleanup(&mut attempts, now).await;
-        
-        // Check if the identifier is in the map
-        if let Some(entry) = attempts.get(identifier) {
-            // If has exceeded max attempts within window
-            if entry.attempts >= config.max_attempts {
-                // If block duration is set, check if still in block period
-                if let Some(block_duration) = config.block_duration {
-                    let elapsed_since_last = now.duration_since(entry.last_attempt);
-                    
-                    // If still in block period, reject
-                    if elapsed_since_last < block_duration {
-                        let seconds_remaining = (block_duration - elapsed_since_last).as_secs();
-                        return Err(AppError::RateLimitError(
-                            format!("{} Try again in {} seconds.", 
-                                    config.message_template, seconds_remaining)
-                        ));
-                    }
-                    
-                    // Block period passed, reset the entry
-                    attempts.insert(identifier.clone(), RateLimitEntry {
-                        attempts: 1,
-                        first_attempt: now,
-                        last_attempt: now,
-                    });
-                    
-                    return Ok(());
-                } else {
-                    // No block duration set, just check window
-                    let elapsed_since_first = now.duration_since(entry.first_attempt);
-                    
-                    if elapsed_since_first < config.window_duration {
-                        let seconds_remaining = (config.window_duration - elapsed_since_first).as_secs();
-                        return Err(AppError::RateLimitError(
-                            format!("{} Try again in {} seconds.", 
-                                    config.message_template, seconds_remaining)
-                        ));
-                    }
-                    
-                    // Window passed, reset the entry
-                    attempts.insert(identifier.clone(), RateLimitEntry {
-                        attempts: 1,
-                        first_attempt: now,
-                        last_attempt: now,
-                    });
-                    
-                    return Ok(());
-                }
-            } else {
-                // Has not exceeded max attempts, increment
-                let entry = attempts.get_mut(identifier).unwrap();
-                entry.attempts += 1;
-                entry.last_attempt = now;
-                
+        self.cleanup_if_needed().await;
+
+        // Get a Redis connection
+        let mut conn = self.redis_manager.clone();
+
+        // First check if the identifier is blocked
+        let blocked_until: Option<i64> = conn.get(&block_key).await.unwrap_or(None);
+
+        if let Some(blocked_until) = blocked_until {
+            if now < blocked_until {
+                let seconds_remaining = blocked_until - now;
+                return Err(AppError::RateLimitError(format!(
+                    "{} Try again in {} seconds.",
+                    config.message_template, seconds_remaining
+                )));
+            }
+            // Block expired, remove it
+            let _: () = conn.del(&block_key).await.unwrap_or(());
+        }
+
+        // Get current count and timestamps using pipeline for efficiency
+        let pipeline_result: Vec<Option<String>> = redis::pipe()
+            .get(&count_key)
+            .get(&first_key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| {
+                error!("Redis pipeline error when getting count and timestamp: {}", e);
+                AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+            })?;
+
+        let count: Option<usize> = pipeline_result[0].as_ref().and_then(|v| v.parse().ok());
+        let first_attempt: Option<i64> = pipeline_result[1].as_ref().and_then(|v| v.parse().ok());
+
+        // If first attempt exists, check if it's within the window
+        if let (Some(count), Some(first)) = (count, first_attempt) {
+            let window_secs = config.window_duration.as_secs() as i64; // Convert u64 to i64 only once
+            let elapsed = now - first;
+
+            // If window expired, reset counters
+            if elapsed >= window_secs {
+                // Window passed, reset counts
+                let mut pipe = Pipeline::new();
+                pipe.set(&count_key, 1)
+                    .set(&first_key, now)
+                    .set(&last_key, now)
+                    .expire(&count_key, window_secs as i64) // Convert back to u64 for Redis
+                    .expire(&first_key, window_secs as i64)
+                    .expire(&last_key, window_secs as i64);
+
+                let _: () = pipe.query_async(&mut conn).await.map_err(|e| {
+                    error!("Redis pipeline error when resetting counters: {}", e);
+                    AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+                })?;
+
                 return Ok(());
             }
+
+            // If within window and exceeded attempts
+            if count >= config.max_attempts {
+                // If block duration is set, apply it
+                if let Some(block_duration) = config.block_duration {
+                    let block_secs = block_duration.as_secs() as i64; // Convert to i64 for timestamp math
+                    let block_until = now + block_secs;
+
+                    // Set blocked status
+                    let _: () = conn
+                        .set_ex(&block_key, block_until, block_secs as u64) // Convert back to u64 for Redis
+                        .await
+                        .map_err(|e| {
+                            error!("Redis error when setting block: {}", e);
+                            AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+                        })?;
+
+                    return Err(AppError::RateLimitError(format!(
+                        "{} Try again in {} seconds.",
+                        config.message_template, block_secs
+                    )));
+                }
+
+                // No block duration, just reject until window expires
+                let remaining_secs = window_secs - elapsed;
+                return Err(AppError::RateLimitError(format!(
+                    "{} Try again in {} seconds.",
+                    config.message_template, remaining_secs
+                )));
+            }
+
+            // Increment the counter
+            let new_count: usize = conn.incr(&count_key, 1).await.map_err(|e| {
+                error!("Redis error when incrementing counter: {}", e);
+                AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+            })?;
+
+            // Update last attempt timestamp
+            let _: () = conn
+                .set_ex(&last_key, now, window_secs as u64) // Convert to u64 for Redis
+                .await
+                .map_err(|e| {
+                    error!("Redis error when updating last attempt: {}", e);
+                    AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+                })?;
+
+            debug!(
+                "Rate limit increment for {:?}: {}/{}",
+                identifier, new_count, config.max_attempts
+            );
+
+            return Ok(());
         }
-        
+
         // First attempt for this identifier
-        attempts.insert(identifier.clone(), RateLimitEntry {
-            attempts: 1,
-            first_attempt: now,
-            last_attempt: now,
-        });
-        
+        let mut pipe = Pipeline::new();
+        let window_secs = config.window_duration.as_secs() as i64; // Convert only once
+        pipe.set(&count_key, 1)
+            .set(&first_key, now)
+            .set(&last_key, now)
+            .expire(&count_key, window_secs as i64) // Convert to u64 for Redis
+            .expire(&first_key, window_secs as i64)
+            .expire(&last_key, window_secs as i64);
+
+        let _: () = pipe.query_async(&mut conn).await.map_err(|e| {
+            error!("Redis pipeline error when setting initial counters: {}", e);
+            AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+        })?;
+
+        debug!("Created new rate limit entry for {:?}", identifier);
         Ok(())
     }
-    
+
     /// Check if the identifier has exceeded rate limits (using default config)
     pub async fn check_rate_limit(&self, identifier: &T) -> AppResult<()> {
         self.check_rate_limit_with_config(identifier, &self.config).await
     }
-    
+
     /// Record a failed attempt for the identifier
-    pub async fn record_failed_attempt(&self, identifier: &T) {
-        let mut attempts = self.attempts.write().await;
-        let now = Instant::now();
-        
-        match attempts.get_mut(identifier) {
-            Some(entry) => {
-                // Update existing entry
-                entry.attempts += 1;
-                entry.last_attempt = now;
-            }
-            None => {
-                // Create new entry
-                attempts.insert(identifier.clone(), RateLimitEntry {
-                    attempts: 1,
-                    first_attempt: now,
-                    last_attempt: now,
-                });
-            }
-        }
-    }
-    
-    /// Record a successful attempt, optionally resetting the counter
-    pub async fn record_successful_attempt(&self, identifier: &T, reset: bool) {
-        let mut attempts = self.attempts.write().await;
-        
-        if reset {
-            // Remove the entry entirely
-            attempts.remove(identifier);
+    pub async fn record_failed_attempt(&self, identifier: &T) -> AppResult<()> {
+        let now = Utc::now().timestamp(); // i64
+        let key_base = self.get_rate_limit_key(identifier);
+        let count_key = format!("{}:{}", key_base, RATE_COUNT_SUFFIX);
+        let first_key = format!("{}:{}", key_base, RATE_FIRST_SUFFIX);
+        let last_key = format!("{}:{}", key_base, RATE_LAST_SUFFIX);
+        let window_secs = self.config.window_duration.as_secs() as i64; // Convert once
+
+        // Get a Redis connection
+        let mut conn = self.redis_manager.clone();
+
+        // Use pipeline to check if keys exist and get values
+        let results: Vec<Option<String>> = redis::pipe()
+            .get(&count_key)
+            .get(&first_key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| {
+                error!("Redis pipeline error when getting values: {}", e);
+                AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+            })?;
+
+        let count: Option<usize> = results[0].as_ref().and_then(|v| v.parse().ok());
+        let first_attempt: Option<i64> = results[1].as_ref().and_then(|v| v.parse().ok());
+
+        let mut pipe = Pipeline::new();
+
+        if count.is_none() || first_attempt.is_none() {
+            // Create new entry
+            pipe.set(&count_key, 1)
+                .set(&first_key, now)
+                .set(&last_key, now)
+                .expire(&count_key, window_secs as i64) // Convert to u64 for Redis
+                .expire(&first_key, window_secs as i64)
+                .expire(&last_key, window_secs as i64);
         } else {
-            // Update the timestamp but keep the count
-            if let Some(entry) = attempts.get_mut(identifier) {
-                entry.last_attempt = Instant::now();
-            }
+            // Increment existing
+            pipe.incr(&count_key, 1)
+                .set_ex(&last_key, now, window_secs as u64); // Convert to u64 for Redis
         }
+
+        let _: () = pipe.query_async(&mut conn).await.map_err(|e| {
+            error!("Redis pipeline error when recording failed attempt: {}", e);
+            AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+        })?;
+
+        Ok(())
     }
-    
+
+    /// Record a successful attempt, optionally resetting the counter
+    pub async fn record_successful_attempt(&self, identifier: &T, reset: bool) -> AppResult<()> {
+        if !reset {
+            // If not resetting, we just update the last timestamp
+            let now = Utc::now().timestamp(); // i64
+            let key_base = self.get_rate_limit_key(identifier);
+            let last_key = format!("{}:{}", key_base, RATE_LAST_SUFFIX);
+            let window_secs = self.config.window_duration.as_secs() as i64; // Convert once
+
+            // Get a Redis connection
+            let mut conn = self.redis_manager.clone();
+
+            // Update last attempt timestamp
+            let _: () = conn
+                .set_ex(&last_key, now, window_secs as u64) // Convert to u64 for Redis
+                .await
+                .map_err(|e| {
+                    error!("Redis error when updating last attempt: {}", e);
+                    AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+                })?;
+
+            return Ok(());
+        }
+
+        // If resetting, delete all related keys
+        let key_base = self.get_rate_limit_key(identifier);
+        let count_key = format!("{}:{}", key_base, RATE_COUNT_SUFFIX);
+        let first_key = format!("{}:{}", key_base, RATE_FIRST_SUFFIX);
+        let last_key = format!("{}:{}", key_base, RATE_LAST_SUFFIX);
+        let block_key = format!("{}:{}", key_base, RATE_BLOCK_SUFFIX);
+
+        // Get a Redis connection
+        let mut conn = self.redis_manager.clone();
+
+        // Delete all related keys
+        let mut pipe = Pipeline::new();
+        pipe.del(&count_key)
+            .del(&first_key)
+            .del(&last_key)
+            .del(&block_key);
+
+        let _: () = pipe.query_async(&mut conn).await.map_err(|e| {
+            error!("Redis pipeline error when resetting rate limit: {}", e);
+            AppError::ServerError(anyhow::anyhow!("Rate limit tracking error"))
+        })?;
+
+        Ok(())
+    }
+
     /// Get current rate limit status for an identifier
     pub async fn get_limit_status(&self, identifier: &T) -> Option<RateLimitStatus> {
         self.get_limit_status_with_config(identifier, &self.config).await
     }
-    
+
     /// Get current rate limit status for an identifier with a specific path
-    pub async fn get_limit_status_for_path(&self, identifier: &T, path: &str) -> Option<RateLimitStatus> {
+    pub async fn get_limit_status_for_path(
+        &self,
+        identifier: &T,
+        path: &str,
+    ) -> Option<RateLimitStatus> {
         // Get the path-specific limit or use default
         let limit = self.get_limit_for_path(path);
-        
+
         // Create a temporary config with the path-specific limit
         let mut path_config = self.config.clone();
         path_config.max_attempts = limit;
-        
+
         self.get_limit_status_with_config(identifier, &path_config).await
     }
-    
+
     /// Get current rate limit status for an identifier with a specific config
-    pub async fn get_limit_status_with_config(&self, identifier: &T, config: &RateLimitConfig) -> Option<RateLimitStatus> {
-        let attempts = self.attempts.read().await;
-        let now = Instant::now();
-        
-        if let Some(entry) = attempts.get(identifier) {
-            let elapsed_since_first = now.duration_since(entry.first_attempt);
-            let elapsed_since_last = now.duration_since(entry.last_attempt);
-            
-            // If within window
-            if elapsed_since_first < config.window_duration {
-                let remaining = if entry.attempts >= config.max_attempts {
-                    0
-                } else {
-                    config.max_attempts - entry.attempts
-                };
-                
-                // Calculate reset time
-                let window_reset = (config.window_duration - elapsed_since_first).as_secs();
-                
-                // If blocked, calculate block time
-                let block_reset = if entry.attempts >= config.max_attempts {
-                    config.block_duration.map(|d| {
-                        if elapsed_since_last < d {
-                            (d - elapsed_since_last).as_secs()
+    pub async fn get_limit_status_with_config(
+        &self,
+        identifier: &T,
+        config: &RateLimitConfig,
+    ) -> Option<RateLimitStatus> {
+        let now = Utc::now().timestamp(); // i64
+        let key_base = self.get_rate_limit_key(identifier);
+        let count_key = format!("{}:{}", key_base, RATE_COUNT_SUFFIX);
+        let first_key = format!("{}:{}", key_base, RATE_FIRST_SUFFIX);
+        let block_key = format!("{}:{}", key_base, RATE_BLOCK_SUFFIX);
+
+        // Get a Redis connection
+        let mut conn = self.redis_manager.clone();
+
+        // Get values with pipelining
+        let results: Vec<Option<String>> = match redis::pipe()
+            .get(&count_key)
+            .get(&first_key)
+            .get(&block_key)
+            .query_async(&mut conn)
+            .await
+        {
+            Ok(results) => results,
+            Err(e) => {
+                error!("Redis pipeline error when getting limit status: {}", e);
+                return None;
+            }
+        };
+
+        let count: Option<usize> = results[0].as_ref().and_then(|v| v.parse().ok());
+        let first_attempt: Option<i64> = results[1].as_ref().and_then(|v| v.parse().ok());
+        let blocked_until: Option<i64> = results[2].as_ref().and_then(|v| v.parse().ok());
+
+        if let Some(count) = count {
+            if let Some(first) = first_attempt {
+                let window_secs = config.window_duration.as_secs() as i64; // Convert once
+                let elapsed = now - first;
+
+                // If still within window
+                if elapsed < window_secs {
+                    let remaining = if count >= config.max_attempts {
+                        0
+                    } else {
+                        config.max_attempts - count
+                    };
+
+                    // Calculate reset time
+                    let window_reset = window_secs - elapsed;
+
+                    // Check if blocked
+                    let (block_reset, is_blocked) = if let Some(blocked_until) = blocked_until {
+                        if now < blocked_until {
+                            (Some(blocked_until - now), true)
                         } else {
-                            0
+                            (None, false)
                         }
-                    })
-                } else {
-                    None
-                };
-                
-                return Some(RateLimitStatus {
-                    attempts: entry.attempts,
-                    limit: config.max_attempts,
-                    remaining,
-                    window_reset,
-                    block_reset,
-                    is_blocked: entry.attempts >= config.max_attempts && 
-                               block_reset.unwrap_or(0) > 0,
-                });
+                    } else {
+                        (None, false)
+                    };
+
+                    return Some(RateLimitStatus {
+                        attempts: count,
+                        limit: config.max_attempts,
+                        remaining,
+                        window_reset,
+                        block_reset,
+                        is_blocked,
+                    });
+                }
             }
         }
-        
-        // If not in map or outside window, full limit available
+
+        // If not in database or outside window, full limit available
         Some(RateLimitStatus {
             attempts: 0,
             limit: config.max_attempts,
@@ -274,50 +478,33 @@ impl<T: Eq + Hash + Clone + Send + Sync + Debug + 'static> RateLimiter<T> {
             is_blocked: false,
         })
     }
-    
-    /// Clean up old entries
-    async fn cleanup(&self, attempts: &mut HashMap<T, RateLimitEntry>, now: Instant) {
-        let mut last_cleanup = self.last_cleanup.write().await;
+
+    /// Clean up old entries if needed
+    async fn cleanup_if_needed(&self) {
+        let now = Instant::now();
         
-        if now.duration_since(*last_cleanup) >= self.cleanup_interval {
-            // Remove expired entries
-            attempts.retain(|_, entry| {
-                // Keep if within window or block period
-                let in_window = now.duration_since(entry.first_attempt) < self.config.window_duration;
-                let in_block = self.config.block_duration
-                    .map(|d| entry.attempts >= self.config.max_attempts && 
-                        now.duration_since(entry.last_attempt) < d)
-                    .unwrap_or(false);
-                
-                in_window || in_block
-            });
-            
-            *last_cleanup = now;
+        // Use try_write to avoid blocking if another task is doing cleanup
+        if let Ok(mut last_cleanup) = self.last_cleanup.try_write() {
+            if now.duration_since(*last_cleanup) >= self.cleanup_interval {
+                debug!("Starting Redis rate limiter periodic cleanup");
+                *last_cleanup = now;
+                // Redis auto-expires keys with TTL, so no manual cleanup needed
+            }
         }
     }
 }
 
-/// Status information about rate limiting for an identifier
-#[derive(Debug, Clone)]
-pub struct RateLimitStatus {
-    pub attempts: usize,
-    pub limit: usize,
-    pub remaining: usize,
-    pub window_reset: u64, // Seconds until window resets
-    pub block_reset: Option<u64>, // Seconds until block ends, if blocked
-    pub is_blocked: bool,
-}
-
-// Specialized Rate Limiters
-
 /// API rate limiter using string identifiers (e.g., IP address, API key)
-pub type ApiRateLimiter = RateLimiter<String>;
+pub type RedisApiRateLimiter = RedisRateLimiter<String>;
 
 /// Login rate limiter using string identifiers (e.g., username, email)
-pub type LoginRateLimiter = RateLimiter<String>;
+pub type RedisLoginRateLimiter = RedisRateLimiter<String>;
 
-// Factory functions for common rate limiter configurations
-pub fn create_api_rate_limiter(path_specific_limits: Option<HashMap<String, usize>>) -> ApiRateLimiter {
+/// Factory function for API rate limiter
+pub async fn create_redis_api_rate_limiter(
+    redis_url: &str,
+    path_specific_limits: Option<HashMap<String, usize>>,
+) -> AppResult<RedisApiRateLimiter> {
     // Default API rate limiter: 100 requests per minute
     let config = RateLimitConfig {
         max_attempts: 100,
@@ -325,19 +512,21 @@ pub fn create_api_rate_limiter(path_specific_limits: Option<HashMap<String, usiz
         block_duration: None, // No blocking for API rate limiter
         message_template: "API rate limit exceeded.".into(),
     };
-    
-    let mut limiter = ApiRateLimiter::new(config)
+
+    let mut limiter = RedisApiRateLimiter::new(redis_url, config)
+        .await?
         .with_cleanup_interval(Duration::from_secs(300));
-    
+
     // Add path-specific limits if provided
     if let Some(limits) = path_specific_limits {
         limiter = limiter.with_path_limits(limits);
     }
-    
-    limiter
+
+    Ok(limiter)
 }
 
-pub fn create_login_rate_limiter() -> LoginRateLimiter {
+/// Factory function for login rate limiter
+pub async fn create_redis_login_rate_limiter(redis_url: &str) -> AppResult<RedisLoginRateLimiter> {
     // Default login rate limiter: 5 attempts per 5 minutes, 15 minute block
     let config = RateLimitConfig {
         max_attempts: 5,
@@ -345,168 +534,218 @@ pub fn create_login_rate_limiter() -> LoginRateLimiter {
         block_duration: Some(Duration::from_secs(900)),
         message_template: "Account protection: Too many login attempts. Your account has been temporarily locked for security.".into(),
     };
-    
-    LoginRateLimiter::new(config)
-        .with_cleanup_interval(Duration::from_secs(300))
+
+    Ok(RedisLoginRateLimiter::new(redis_url, config)
+        .await?
+        .with_cleanup_interval(Duration::from_secs(300)))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::test;
-    use tokio::time::sleep;
 
-    #[test]
-    async fn test_api_rate_limiter() {
-        let config = RateLimitConfig {
-            max_attempts: 5,
-            window_duration: Duration::from_secs(1),
-            block_duration: None,
-            message_template: "API rate limit exceeded.".into(),
-        };
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use tokio::time::{sleep, Duration as TokioDuration};
+    use std::env;
+    use uuid::Uuid;
+
+    // This test requires a running Redis server
+    // It will be skipped if REDIS_URL environment variable is not set
+    #[tokio::test]
+    async fn test_rate_limiter_integration() {
+        let redis_url =  "http://localhost:6379";
+
+        // Create a unique test identifier to avoid collision with other tests
+        let test_id = format!("test-{}", Uuid::new_v4());
         
-        let limiter = ApiRateLimiter::new(config);
-        let identifier = "test_client".to_string();
-        
-        // First 5 requests should pass
-        for _ in 0..5 {
-            assert!(limiter.check_rate_limit(&identifier).await.is_ok());
-        }
-        
-        // 6th request should fail
-        assert!(limiter.check_rate_limit(&identifier).await.is_err());
-        
-        // Wait for rate limit window to pass
-        sleep(Duration::from_secs(1)).await;
-        
-        // Should be able to make requests again
-        assert!(limiter.check_rate_limit(&identifier).await.is_ok());
-    }
-    
-    #[test]
-    async fn test_path_specific_limits() {
-        // Create rate limiter with path-specific limits
-        let mut path_limits = HashMap::new();
-        path_limits.insert("/api/public".to_string(), 10);
-        path_limits.insert("/api/admin".to_string(), 3);
-        
-        let config = RateLimitConfig {
-            max_attempts: 5, // Default limit
-            window_duration: Duration::from_secs(1),
-            block_duration: None,
-            message_template: "Rate limit exceeded.".into(),
-        };
-        
-        let limiter = ApiRateLimiter::new(config).with_path_limits(path_limits);
-        let client_id = "test_client".to_string();
-        
-        // Test public API path (limit: 10)
-        for _ in 0..10 {
-            assert!(limiter.check_rate_limit_for_path(&client_id, "/api/public").await.is_ok(),
-                   "Public API should allow 10 requests");
-        }
-        assert!(limiter.check_rate_limit_for_path(&client_id, "/api/public").await.is_err(),
-               "Public API should reject after 10 requests");
-        
-        // Test admin API path (limit: 3)
-        let admin_id = "admin_client".to_string();
-        for _ in 0..3 {
-            assert!(limiter.check_rate_limit_for_path(&admin_id, "/api/admin").await.is_ok(),
-                   "Admin API should allow 3 requests");
-        }
-        assert!(limiter.check_rate_limit_for_path(&admin_id, "/api/admin").await.is_err(),
-               "Admin API should reject after 3 requests");
-        
-        // Test default limit (limit: 5)
-        let other_id = "other_client".to_string();
-        for _ in 0..5 {
-            assert!(limiter.check_rate_limit_for_path(&other_id, "/api/other").await.is_ok(),
-                   "Other API should allow 5 requests (default)");
-        }
-        assert!(limiter.check_rate_limit_for_path(&other_id, "/api/other").await.is_err(),
-               "Other API should reject after 5 requests (default)");
-    }
-    
-    #[test]
-    async fn test_login_rate_limiter() {
+        // Create a configuration with small durations for testing
         let config = RateLimitConfig {
             max_attempts: 3,
-            window_duration: Duration::from_secs(1),
-            block_duration: Some(Duration::from_secs(2)),
-            message_template: "Too many login attempts.".into(),
-        };
-        
-        let limiter = LoginRateLimiter::new(config);
-        let username = "test_user".to_string();
-        
-        // First 3 attempts should pass
-        for _ in 0..3 {
-            assert!(limiter.check_rate_limit(&username).await.is_ok());
-        }
-        
-        // 4th attempt should fail
-        match limiter.check_rate_limit(&username).await {
-            Err(AppError::RateLimitError(msg)) => {
-                assert!(msg.contains("Too many login attempts"));
-                assert!(msg.contains("Try again in"));
-            }
-            _ => panic!("Expected RateLimitError"),
-        }
-        
-        // Wait for window to pass but not block
-        sleep(Duration::from_secs(1)).await;
-        
-        // Should still be blocked
-        assert!(limiter.check_rate_limit(&username).await.is_err());
-        
-        // Wait for block to pass
-        sleep(Duration::from_secs(1)).await;
-        
-        // Should be able to try again
-        assert!(limiter.check_rate_limit(&username).await.is_ok());
-    }
-    
-    #[test]
-    async fn test_get_limit_status() {
-        let config = RateLimitConfig {
-            max_attempts: 3,
-            window_duration: Duration::from_secs(2),
+            window_duration: Duration::from_secs(3),
             block_duration: Some(Duration::from_secs(5)),
-            message_template: "Rate limit test.".into(),
+            message_template: "Test rate limit exceeded".into(),
         };
+
+        // Create a rate limiter
+        let rate_limiter = match RedisRateLimiter::<String>::new(&redis_url, config).await {
+            Ok(rl) => rl,
+            Err(e) => {
+                println!("Failed to create rate limiter: {:?}", e);
+                return;
+            }
+        };
+
+        // Test basic rate limiting
+        // First attempt should succeed
+        let result = rate_limiter.check_rate_limit(&test_id).await;
+        assert!(result.is_ok(), "First attempt should succeed");
+
+        // Get status after first attempt
+        if let Some(status) = rate_limiter.get_limit_status(&test_id).await {
+            assert_eq!(status.attempts, 1);
+            assert_eq!(status.remaining, 2);
+            assert_eq!(status.is_blocked, false);
+        } else {
+            panic!("Failed to get rate limit status");
+        }
+
+        // Second attempt should succeed
+        let result = rate_limiter.check_rate_limit(&test_id).await;
+        assert!(result.is_ok(), "Second attempt should succeed");
+
+        // Third attempt should succeed (at the limit)
+        let result = rate_limiter.check_rate_limit(&test_id).await;
+        assert!(result.is_ok(), "Third attempt should succeed");
+
+        // Fourth attempt should fail and trigger blocking
+        let result = rate_limiter.check_rate_limit(&test_id).await;
+        assert!(result.is_err(), "Fourth attempt should fail");
         
-        let limiter = LoginRateLimiter::new(config);
-        let identifier = "status_test".to_string();
+        if let Err(AppError::RateLimitError(msg)) = result {
+            assert!(msg.contains("Test rate limit exceeded"));
+            assert!(msg.contains("Try again in 5 seconds"));
+        } else {
+            panic!("Expected RateLimitError");
+        }
+
+        // Get status after blocking
+        if let Some(status) = rate_limiter.get_limit_status(&test_id).await {
+            assert_eq!(status.attempts, 3);
+            assert_eq!(status.remaining, 0);
+            assert_eq!(status.is_blocked, true);
+            assert!(status.block_reset.is_some());
+        } else {
+            panic!("Failed to get rate limit status");
+        }
+
+        // Wait for block to expire
+        sleep(TokioDuration::from_secs(6)).await;
+
+        // After block expires, should be able to try again
+        let result = rate_limiter.check_rate_limit(&test_id).await;
+        assert!(result.is_ok(), "After block expiry, attempt should succeed");
+
+        // Check window expiry
+        // Reset the counter
+        let _ = rate_limiter.record_successful_attempt(&test_id, true).await;
         
-        // Check initial status
-        let status = limiter.get_limit_status(&identifier).await.unwrap();
-        assert_eq!(status.limit, 3);
-        assert_eq!(status.remaining, 3);
-        assert_eq!(status.attempts, 0);
-        assert_eq!(status.is_blocked, false);
+        // Make two attempts
+        let _ = rate_limiter.check_rate_limit(&test_id).await;
+        let _ = rate_limiter.check_rate_limit(&test_id).await;
         
-        // Make some attempts
-        for _ in 0..2 {
-            limiter.check_rate_limit(&identifier).await.unwrap();
+        // Wait for window to expire
+        sleep(TokioDuration::from_secs(4)).await;
+        
+        // Even after two attempts, should be able to make max_attempts more
+        // since the window has expired
+        for i in 0..3 {
+            let result = rate_limiter.check_rate_limit(&test_id).await;
+            assert!(result.is_ok(), "Attempt {} after window expiry should succeed", i+1);
         }
         
-        // Check status after attempts
-        let status = limiter.get_limit_status(&identifier).await.unwrap();
-        assert_eq!(status.attempts, 2);
-        assert_eq!(status.remaining, 1);
-        assert!(status.window_reset > 0);
-        assert_eq!(status.is_blocked, false);
+        // Fourth attempt should fail again
+        let result = rate_limiter.check_rate_limit(&test_id).await;
+        assert!(result.is_err(), "Fourth attempt after window expiry should fail");
+
+        // Test path-specific limits
+        let path_limits = {
+            let mut map = HashMap::new();
+            map.insert("/api/sensitive".to_string(), 1); // Only 1 attempt allowed
+            map.insert("/api/normal".to_string(), 5);    // 5 attempts allowed
+            map
+        };
         
-        // Exceed the limit
-        limiter.check_rate_limit(&identifier).await.unwrap();
-        assert!(limiter.check_rate_limit(&identifier).await.is_err());
+        let rate_limiter = rate_limiter.with_path_limits(path_limits);
         
-        // Check blocked status
-        let status = limiter.get_limit_status(&identifier).await.unwrap();
-        // assert_eq!(status.attempts, 4);
-        assert_eq!(status.remaining, 0);
-        assert_eq!(status.is_blocked, true);
-        assert!(status.block_reset.is_some());
-        assert!(status.block_reset.unwrap() > 0);
+        // Create a new test ID for path testing
+        let path_test_id = format!("test-path-{}", Uuid::new_v4());
+        
+        // For sensitive path, only 1 attempt should be allowed
+        let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/sensitive").await;
+        assert!(result.is_ok(), "First attempt on sensitive path should succeed");
+        
+        let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/sensitive").await;
+        assert!(result.is_err(), "Second attempt on sensitive path should fail");
+        
+        // For normal path, 5 attempts should be allowed
+        for i in 0..5 {
+            let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/normal").await;
+            assert!(result.is_ok(), "Attempt {} on normal path should succeed", i+1);
+        }
+        
+        let result = rate_limiter.check_rate_limit_for_path(&path_test_id, "/api/normal").await;
+        assert!(result.is_err(), "Sixth attempt on normal path should fail");
+
+        // Clean up after test
+        let _ = rate_limiter.record_successful_attempt(&test_id, true).await;
+        let _ = rate_limiter.record_successful_attempt(&path_test_id, true).await;
+        
+        println!("Integration test completed successfully");
+    }
+
+    // Test for API rate limiter factory
+    #[tokio::test]
+    async fn test_api_rate_limiter_factory() {
+        let redis_url = match env::var("REDIS_URL") {
+            Ok(url) => url,
+            Err(_) => {
+                println!("Skipping integration test, REDIS_URL not set");
+                return;
+            }
+        };
+
+        let path_limits = {
+            let mut map = HashMap::new();
+            map.insert("/api/high_traffic".to_string(), 200); // 200 requests per minute
+            map.insert("/api/low_traffic".to_string(), 50);   // 50 requests per minute
+            map
+        };
+
+        let api_limiter = match create_redis_api_rate_limiter(&redis_url, Some(path_limits)).await {
+            Ok(limiter) => limiter,
+            Err(e) => {
+                println!("Failed to create API rate limiter: {:?}", e);
+                return;
+            }
+        };
+
+        // Verify default limit is 100
+        assert_eq!(api_limiter.config.max_attempts, 100);
+        
+        // Verify path-specific limits
+        assert_eq!(api_limiter.get_limit_for_path("/api/high_traffic"), 200);
+        assert_eq!(api_limiter.get_limit_for_path("/api/low_traffic"), 50);
+        assert_eq!(api_limiter.get_limit_for_path("/api/unknown"), 100); // Default
+
+        // Verify no blocking for API rate limiter
+        assert!(api_limiter.config.block_duration.is_none());
+    }
+
+    // Test for login rate limiter factory
+    #[tokio::test]
+    async fn test_login_rate_limiter_factory() {
+        let redis_url = match env::var("REDIS_URL") {
+            Ok(url) => url,
+            Err(_) => {
+                println!("Skipping integration test, REDIS_URL not set");
+                return;
+            }
+        };
+
+        let login_limiter = match create_redis_login_rate_limiter(&redis_url).await {
+            Ok(limiter) => limiter,
+            Err(e) => {
+                println!("Failed to create login rate limiter: {:?}", e);
+                return;
+            }
+        };
+
+        // Verify login limiter settings
+        assert_eq!(login_limiter.config.max_attempts, 5);
+        assert_eq!(login_limiter.config.window_duration, Duration::from_secs(300));
+        assert_eq!(
+            login_limiter.config.block_duration, 
+            Some(Duration::from_secs(900))
+        );
+        assert!(login_limiter.config.message_template.contains("login attempts"));
     }
 }

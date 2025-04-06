@@ -8,7 +8,7 @@ use axum::{
 use std::{net::IpAddr, str::FromStr, sync::Arc};
 use tracing::{warn, trace, info, error};
 
-use crate::limits::rate_limiter::{ApiRateLimiter, RateLimitStatus, RateLimiter};
+use crate::limits::rate_limiter::{RedisApiRateLimiter, RateLimitStatus};
 use crate::JwtService;
 
 // Extract client identifier from request
@@ -74,9 +74,9 @@ pub fn add_rate_limit_headers(response: &mut Response, status: &RateLimitStatus)
     }
 }
 
-// Unified API rate limiting middleware
+// Redis-based API rate limiting middleware
 pub async fn api_rate_limit_middleware(
-    State(rate_limiter): State<Arc<ApiRateLimiter>>,
+    State(rate_limiter): State<Arc<RedisApiRateLimiter>>,
     req: Request<Body>,
     next: Next,
 ) -> Response {
@@ -181,12 +181,6 @@ pub async fn security_headers_middleware(
         HeaderValue::from_static("strict-origin-when-cross-origin")
     );
     
-    // // Content Security Policy - adjust as needed
-    // headers.insert(
-    //     "Content-Security-Policy", 
-    //     HeaderValue::from_static("default-src 'self'; script-src 'self'; connect-src 'self';")
-    // );
-    
     response
 }
 
@@ -251,8 +245,8 @@ pub async fn logging_middleware(
 }
 
 // Combined API middleware stack - for convenience
-pub fn api_middleware_stack(rate_limiter: Arc<ApiRateLimiter>) -> impl tower::Layer<axum::extract::Request<Body>> + Clone {
-    axum::middleware::from_fn_with_state::<_, Arc<RateLimiter<String>>, Body>(rate_limiter, api_rate_limit_middleware)
+pub fn api_middleware_stack(rate_limiter: Arc<RedisApiRateLimiter>) -> impl tower::Layer<axum::extract::Request<Body>> + Clone {
+    axum::middleware::from_fn_with_state::<_, Arc<RedisApiRateLimiter>, Body>(rate_limiter, api_rate_limit_middleware)
 }
 
 // Combined JWT middleware stack - for convenience

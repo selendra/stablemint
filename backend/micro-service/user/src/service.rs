@@ -1,10 +1,9 @@
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
 use app_middleware::{
-    limits::rate_limiter::LoginRateLimiter,
     security::password, 
     validation, 
-    JwtService
+    JwtService, RedisLoginRateLimiter
 };
 use app_models::user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile};
 use async_trait::async_trait;
@@ -86,7 +85,7 @@ impl ValidationInput {
 pub struct AuthService {
     jwt_service: Arc<JwtService>,
     user_db: Option<Arc<DbService<'static, User>>>,
-    rate_limiter: Option<Arc<LoginRateLimiter>>,
+    rate_limiter: Option<Arc<RedisLoginRateLimiter>>, // Changed to Redis implementation
 }
 
 impl AuthService {
@@ -106,7 +105,7 @@ impl AuthService {
     }
 
     /// Add rate limiter to the authentication service
-    pub fn with_rate_limiter(mut self, rate_limiter: Arc<LoginRateLimiter>) -> Self {
+    pub fn with_rate_limiter(mut self, rate_limiter: Arc<RedisLoginRateLimiter>) -> Self {
         self.rate_limiter = Some(rate_limiter);
         self
     }
@@ -275,8 +274,12 @@ impl AuthServiceTrait for AuthService {
             Err(e) => {
                 // Record failed attempt if rate limiting is enabled
                 if let Some(rate_limiter) = &self.rate_limiter {
-                    rate_limiter.record_failed_attempt(&input.username).await;
+                    if let Err(e) = rate_limiter.record_failed_attempt(&input.username).await {
+                        error!("Failed to record rate limit attempt: {}", e);
+                        // Optionally, you could decide whether to proceed or return the error
+                    }
                 }
+                
                 return Err(e);
             }
         };
@@ -286,7 +289,10 @@ impl AuthServiceTrait for AuthService {
         if !is_valid {
             // Record failed attempt if rate limiting is enabled
             if let Some(rate_limiter) = &self.rate_limiter {
-                rate_limiter.record_failed_attempt(&input.username).await;
+                if let Err(e) = rate_limiter.record_failed_attempt(&input.username).await {
+                    error!("Failed to record rate limit attempt: {}", e);
+                    // Optionally, you could decide whether to proceed or return the error
+                }
             }
 
             // For security, use the same error message as when username is not found
@@ -297,7 +303,10 @@ impl AuthServiceTrait for AuthService {
 
         // Record successful attempt if rate limiting is enabled
         if let Some(rate_limiter) = &self.rate_limiter {
-            rate_limiter.record_successful_attempt(&input.username, true).await;
+            if let Err(e) = rate_limiter.record_failed_attempt(&input.username).await {
+                error!("Failed to record rate limit attempt: {}", e);
+                // Optionally, you could decide whether to proceed or return the error
+            }
         }
 
         // Create authentication response

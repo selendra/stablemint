@@ -1,7 +1,7 @@
 use anyhow::Context;
-use app_middleware::limits::rate_limiter::RateLimiter;
+use app_middleware::limits::rate_limiter::{create_redis_api_rate_limiter, create_redis_login_rate_limiter};
 use micro_user::{routes, service::AuthService};
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, collections::HashMap};
 use tokio::net::TcpListener;
 use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
@@ -69,19 +69,34 @@ async fn main() -> Result<(), AppError> {
 
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
     
-    // Configure rate limiting from our config file
-    // Create login rate limiter with configured settings from JSON
-    let login_limiter = Arc::new(RateLimiter::new(
-        app_middleware::limits::rate_limiter::RateLimitConfig {
-            max_attempts: config.security.rate_limiting.login.max_attempts,
-            window_duration: Duration::from_secs(
-                config.security.rate_limiting.login.window_duration
-            ),
-            block_duration: config.security.rate_limiting.login.block_duration
-                .map(|seconds| Duration::from_secs(seconds)),
-            message_template: "Account protection: Too many login attempts.".into(),
-        }
-    ));
+    // Configure path-specific rate limits from our config file
+    let mut path_limits = HashMap::new();
+    
+    // Convert path-specific limits from the config
+    for (path, limit) in &config.security.rate_limiting.paths {
+        path_limits.insert(path.clone(), *limit);
+    }
+    
+    // Initialize Redis configuration
+    let redis_config = config.redis.clone().ok_or_else(|| {
+        AppError::ConfigError(anyhow::anyhow!(
+            "Redis configuration is required but not provided"
+        ))
+    })?;
+    
+    info!("Initializing Redis-based distributed rate limiting");
+    
+    // Create API rate limiter with Redis backend
+    let api_rate_limiter = Arc::new(
+        create_redis_api_rate_limiter(&redis_config.url, Some(path_limits))
+            .await?
+    );
+    
+    // Create login rate limiter with Redis backend
+    let login_rate_limiter = Arc::new(
+        create_redis_login_rate_limiter(&redis_config.url)
+            .await?
+    );
 
     // Create auth service with JWT config from our config file
     let auth_service = Arc::new(
@@ -90,14 +105,14 @@ async fn main() -> Result<(), AppError> {
             config.security.jwt.expiry_hours
         )
         .with_db(user_db)
-        .with_rate_limiter(login_limiter)
+        .with_rate_limiter(login_rate_limiter)
     );
 
     // Create GraphQL schema
     let schema = create_schema();
 
     // Configure application routes
-    let app = routes::create_routes(schema, auth_service);
+    let app = routes::create_routes(schema, auth_service, api_rate_limiter);
 
     // Bind server to address and start it
     let address = format!("{}:{}", config.server.host, config.server.port);

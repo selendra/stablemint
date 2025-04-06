@@ -14,6 +14,7 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     pub monitoring: MonitoringConfig,
     pub bodylimit: BodyLimitConfig,
+    pub redis: Option<RedisConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -128,6 +129,13 @@ pub struct BodyLimitConfig {
     pub user: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RedisConfig {
+    pub url: String,
+    pub pool_size: usize,
+    pub connection_timeout: u64,
+    pub prefix: Option<String>,
+}
 
 
 impl AppConfig {
@@ -213,14 +221,27 @@ impl AppConfig {
             errors.push("Sentry DSN should be configured in production".to_string());
         }
         
+            // Validate Redis configuration if present
+        if let Some(ref redis_config) = self.redis {
+            if redis_config.url.trim().is_empty() {
+                errors.push("Redis URL cannot be empty".to_string());
+            } else if self.environment == "production" && 
+                    !redis_config.url.starts_with("rediss://") {
+                errors.push("Production should use a secure 'rediss://' Redis connection".to_string());
+            }
+            
+            if redis_config.pool_size == 0 {
+                errors.push("Redis pool size must be greater than 0".to_string());
+            }
+        }
+        
         if !errors.is_empty() {
             return Err(AppError::ConfigError(anyhow::anyhow!(
                 "Invalid configuration: {}",
                 errors.join(", ")
             )));
         }
-        
-        Ok(())
+            Ok(())
     }
 }
 
@@ -304,6 +325,7 @@ impl Default for AppConfig {
             bodylimit: BodyLimitConfig {
                 user: 1048576, // 1MB
             },
+            redis: None,
         }
     }
 }
