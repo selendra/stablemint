@@ -1,7 +1,7 @@
 {
     "environment": "development",
     "database": {
-        "endpoint": "ws://test-db:8000",
+        "endpoint": "ws://0.0.0.0:8000",
         "username": "root",
         "password": "root",
         "namespace": "surrealdb",
@@ -12,7 +12,7 @@
         }
     },
     "server": {
-        "host": "127.0.0.1",
+        "host": "0.0.0.0",
         "port": 4000,
         "timeouts": {
             "read": 20000,
@@ -29,7 +29,7 @@
             "algorithm": "HS256"
         },
         "cors": {
-            "allowed_origins": ["http://localhost:3000"],
+            "allowed_origins": ["http://0.0.0.0:3000"],
             "allowed_methods": ["GET", "POST"],
             "allowed_headers": ["Content-Type"]
         },
@@ -79,7 +79,7 @@
         "user": 1048576
     },
      "redis": {
-        "url": "redis://127.0.0.1:6379",
+        "url": "redis://0.0.0.0:6379",
         "pool_size": 10,
         "connection_timeout": 5000,
         "prefix": "app"
