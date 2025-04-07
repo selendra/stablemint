@@ -9,7 +9,7 @@ use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
 use app_config::AppConfig;
-use app_database::{DB_ARC, db_connect::initialize_user_db, service::DbService};
+use app_database::{db_connect::{initialize_user_db, initialize_wallet_db}, service::DbService, DB_ARC};
 use app_error::AppError;
 use app_models::{user::User, wallet::Wallet};
 use micro_user::schema::create_schema;
@@ -46,12 +46,9 @@ async fn main() -> Result<(), AppError> {
         "error" => Level::ERROR,
         _ => Level::INFO,
     };
-
     let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
-
     let subscriber = subscriber.with(sentry_tracing::layer());
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
-
     info!(
         "Starting application in {} environment at {}",
         config.environment,
@@ -68,8 +65,17 @@ async fn main() -> Result<(), AppError> {
         })
         .await;
 
+    let wallet_db_arc = DB_ARC
+        .get_or_init(|| async {
+            initialize_wallet_db().await.unwrap_or_else(|e| {
+                error!("Wallet database initialization failed: {}", e);
+                panic!("Wallet database initialization failed");
+            })
+        })
+        .await;
+
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
-    let wallet_db = Arc::new(DbService::<Wallet>::new(db_arc, "wallets"));
+    let wallet_db = Arc::new(DbService::<Wallet>::new(wallet_db_arc, "wallets"));
 
     // Configure path-specific rate limits from our config file
     let mut path_limits = HashMap::new();
