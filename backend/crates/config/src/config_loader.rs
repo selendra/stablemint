@@ -9,26 +9,21 @@ use app_error::{AppError, AppResult};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub environment: String,
-    pub database: DatabaseConfig,
-    // New: Support for multiple microservice databases
-    #[serde(default)]
-    pub microservices: MicroservicesConfig,
+    pub database: DatabasesConfig,
     pub server: ServerConfig,
     pub security: SecurityConfig,
     pub monitoring: MonitoringConfig,
-    pub bodylimit: BodyLimitConfig,
     pub redis: Option<RedisConfig>,
 }
 
-/// Configuration for multiple microservices
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct MicroservicesConfig {
-    pub user_db: Option<DatabaseConfig>,
-    pub wallet_db: Option<DatabaseConfig>,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DatabasesConfig {
+    pub user_db: SurrealDbConfig,
+    pub wallet_db: SurrealDbConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DatabaseConfig {
+pub struct SurrealDbConfig {
     pub endpoint: String,
     pub username: String,
     pub password: String,
@@ -135,11 +130,6 @@ pub struct LoggingConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BodyLimitConfig {
-    pub user: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RedisConfig {
     pub url: String,
     pub pool_size: usize,
@@ -150,114 +140,41 @@ pub struct RedisConfig {
 impl AppConfig {
     /// Load configuration from a JSON file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let config_content = fs::read_to_string(path)?;
-        let config: AppConfig = serde_json::from_str(&config_content)?;
-
+        let config: AppConfig = serde_json::from_str(&fs::read_to_string(path)?)?;
         debug!("Configuration loaded from file");
-
         Ok(config)
     }
 
     /// Load configuration from the default location
     pub fn load() -> AppResult<Self> {
-        let config_content =
-            std::str::from_utf8(include_bytes!("../res/app-config.json")).expect("Invalid UTF-8");
+        let config_content = std::str::from_utf8(include_bytes!("../res/app-config.json"))
+            .expect("Invalid UTF-8");
+        
         // Try to load the config from file
-        let config = match serde_json::from_str::<AppConfig>(&config_content) {
+        let config = match serde_json::from_str::<AppConfig>(config_content) {
             Ok(conf) => {
                 info!("Loaded configuration from: {:?}", conf.environment);
                 conf
             }
             Err(e) => {
-                warn!(
-                    "Failed to load config file: {}. Using default configuration.",
-                    e
-                );
+                warn!("Failed to load config file: {}. Using default configuration.", e);
                 Self::default()
             }
         };
 
         // Validate the config
         config.validate()?;
-
         Ok(config)
-    }
-
-    /// Get specific microservice database config or fall back to default
-    pub fn get_database_config(&self, service_name: &str) -> DatabaseConfig {
-        match service_name {
-            "user" => self.microservices.user_db.as_ref().map(|db| db.clone()).unwrap_or_else(|| {
-                debug!("User database config not found, using default");
-                self.database.clone()
-            }),
-            "wallet" => self.microservices.wallet_db.as_ref().map(|db| db.clone()).unwrap_or_else(|| {
-                debug!("Wallet database config not found, using default");
-                self.database.clone()
-            }),
-            _ => {
-                debug!("Unknown service name: {}, using default database config", service_name);
-                self.database.clone()
-            }
-        }
     }
 
     /// Validate the configuration
     pub fn validate(&self) -> AppResult<()> {
         let mut errors = Vec::new();
-
-        // Only perform strict validation in production
         let is_production = self.environment == "production";
 
-        // Validate database configuration
-        if self.database.endpoint.trim().is_empty() {
-            errors.push("Database endpoint cannot be empty".to_string());
-        } else if is_production
-            && !self.database.endpoint.starts_with("wss://")
-            && !self.database.endpoint.contains("memory")
-        {
-            errors.push("Production should use a secure 'wss://' database connection".to_string());
-        }
-
-        if self.database.namespace.trim().is_empty() {
-            errors.push("Database namespace cannot be empty".to_string());
-        }
-
-        if self.database.database.trim().is_empty() {
-            errors.push("Database name cannot be empty".to_string());
-        }
-
-        if is_production && self.database.username == "root" {
-            errors.push("Using default 'root' username in production is insecure".to_string());
-        }
-
-        if is_production && self.database.password == "root" {
-            errors.push("Using default 'root' password in production is insecure".to_string());
-        }
-
-        // Validate microservice databases if provided
-        if let Some(ref user_db) = self.microservices.user_db {
-            if user_db.endpoint.trim().is_empty() {
-                errors.push("User database endpoint cannot be empty".to_string());
-            }
-            if user_db.namespace.trim().is_empty() {
-                errors.push("User database namespace cannot be empty".to_string());
-            }
-            if user_db.database.trim().is_empty() {
-                errors.push("User database name cannot be empty".to_string());
-            }
-        }
-
-        if let Some(ref wallet_db) = self.microservices.wallet_db {
-            if wallet_db.endpoint.trim().is_empty() {
-                errors.push("Wallet database endpoint cannot be empty".to_string());
-            }
-            if wallet_db.namespace.trim().is_empty() {
-                errors.push("Wallet database namespace cannot be empty".to_string());
-            }
-            if wallet_db.database.trim().is_empty() {
-                errors.push("Wallet database name cannot be empty".to_string());
-            }
-        }
+        // Validate user and wallet database configurations
+        self.validate_database_config(&self.database.user_db, "user_db", is_production, &mut errors);
+        self.validate_database_config(&self.database.wallet_db, "wallet_db", is_production, &mut errors);
 
         // Validate server configuration
         if self.server.host.trim().is_empty() {
@@ -269,10 +186,8 @@ impl AppConfig {
         }
 
         // Validate security configuration
-        if is_production
-            && (self.security.jwt.secret.len() < 32
-                || self.security.jwt.secret == "your-strong-secret-key-here")
-        {
+        if is_production && (self.security.jwt.secret.len() < 32 || 
+                           self.security.jwt.secret == "your-strong-secret-key-here") {
             errors.push("JWT secret is not secure for production use".to_string());
         }
 
@@ -285,11 +200,8 @@ impl AppConfig {
         if let Some(ref redis_config) = self.redis {
             if redis_config.url.trim().is_empty() {
                 errors.push("Redis URL cannot be empty".to_string());
-            } else if self.environment == "production" && !redis_config.url.starts_with("rediss://")
-            {
-                errors.push(
-                    "Production should use a secure 'rediss://' Redis connection".to_string(),
-                );
+            } else if is_production && !redis_config.url.starts_with("rediss://") {
+                errors.push("Production should use a secure 'rediss://' Redis connection".to_string());
             }
 
             if redis_config.pool_size == 0 {
@@ -305,24 +217,74 @@ impl AppConfig {
         }
         Ok(())
     }
+    
+    /// Helper function to validate individual database configs
+    fn validate_database_config(
+        &self, 
+        db_config: &SurrealDbConfig, 
+        db_name: &str,
+        is_production: bool, 
+        errors: &mut Vec<String>
+    ) {
+        // Endpoint validation
+        if db_config.endpoint.trim().is_empty() {
+            errors.push(format!("{} endpoint cannot be empty", db_name));
+        } else if is_production && !db_config.endpoint.starts_with("wss://") && 
+                                  !db_config.endpoint.contains("memory") {
+            errors.push(format!("{} should use a secure 'wss://' database connection in production", db_name));
+        }
+
+        // Namespace validation
+        if db_config.namespace.trim().is_empty() {
+            errors.push(format!("{} namespace cannot be empty", db_name));
+        }
+
+        // Database name validation
+        if db_config.database.trim().is_empty() {
+            errors.push(format!("{} database name cannot be empty", db_name));
+        }
+
+        // Credentials validation in production
+        if is_production {
+            if db_config.username == "root" {
+                errors.push(format!("Using default 'root' username in {} in production is insecure", db_name));
+            }
+
+            if db_config.password == "root" {
+                errors.push(format!("Using default 'root' password in {} in production is insecure", db_name));
+            }
+        }
+    }
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             environment: "development".to_string(),
-            database: DatabaseConfig {
-                endpoint: "ws://localhost:8000".to_string(),
-                username: "root".to_string(),
-                password: "root".to_string(),
-                namespace: "selendraDb".to_string(),
-                database: "cryptoBank".to_string(),
-                pool: DbPoolConfig {
-                    size: 10,
-                    connection_timeout: 5000,
+            database: DatabasesConfig {
+                user_db: SurrealDbConfig {
+                    endpoint: "ws://localhost:8000".to_string(),
+                    username: "root".to_string(),
+                    password: "root".to_string(),
+                    namespace: "userDb".to_string(),
+                    database: "cryptoBank".to_string(),
+                    pool: DbPoolConfig {
+                        size: 5,
+                        connection_timeout: 5000,
+                    },
+                },
+                wallet_db: SurrealDbConfig {
+                    endpoint: "ws://localhost:8000".to_string(),
+                    username: "root".to_string(),
+                    password: "root".to_string(),
+                    namespace: "walletDb".to_string(),
+                    database: "cryptoBank".to_string(),
+                    pool: DbPoolConfig {
+                        size: 10,
+                        connection_timeout: 5000,
+                    },
                 },
             },
-            microservices: MicroservicesConfig::default(),
             server: ServerConfig {
                 host: "0.0.0.0".to_string(),
                 port: 3000,
@@ -389,10 +351,12 @@ impl Default for AppConfig {
                     hide_secrets: true,
                 },
             },
-            bodylimit: BodyLimitConfig {
-                user: 1048576, // 1MB
-            },
-            redis: None,
+            redis: Some(RedisConfig {
+                url: "redis://localhost:6379".to_string(),
+                pool_size: 10,
+                connection_timeout: 5000,
+                prefix: Some("app".to_string()),
+            }),
         }
     }
 }
@@ -405,41 +369,30 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_multi_db_config() {
+    fn test_config_from_file() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test-config.json");
 
         let config_json = r#"{
             "environment": "test",
             "database": {
-                "endpoint": "ws://test-db:8000",
-                "username": "test_user",
-                "password": "test_pass",
-                "namespace": "test_ns",
-                "database": "test_db",
-                "pool": {
-                    "size": 5,
-                    "connection_timeout": 3000
-                }
-            },
-            "microservices": {
                 "user_db": {
-                    "endpoint": "ws://user-db:8000",
-                    "username": "user_service",
-                    "password": "user_pass",
-                    "namespace": "user_ns",
-                    "database": "user_db",
+                    "endpoint": "ws://test-db:8000",
+                    "username": "test_user",
+                    "password": "test_pass",
+                    "namespace": "test_user_ns",
+                    "database": "test_user_db",
                     "pool": {
                         "size": 5,
                         "connection_timeout": 3000
                     }
                 },
                 "wallet_db": {
-                    "endpoint": "ws://wallet-db:8001",
-                    "username": "wallet_service",
+                    "endpoint": "ws://test-wallet-db:8000",
+                    "username": "wallet_user",
                     "password": "wallet_pass",
-                    "namespace": "wallet_ns",
-                    "database": "wallet_db",
+                    "namespace": "test_wallet_ns",
+                    "database": "test_wallet_db",
                     "pool": {
                         "size": 10,
                         "connection_timeout": 3000
@@ -510,8 +463,11 @@ mod tests {
                     "hide_secrets": true
                 }
             },
-            "bodylimit": {
-                "user": 1048576
+            "redis": {
+                "url": "redis://test-redis:6379",
+                "pool_size": 5,
+                "connection_timeout": 2000,
+                "prefix": "test_app"
             }
         }"#;
 
@@ -524,39 +480,64 @@ mod tests {
 
         // Verify loaded values
         assert_eq!(config.environment, "test");
+        assert_eq!(config.database.user_db.endpoint, "ws://test-db:8000");
+        assert_eq!(config.database.user_db.username, "test_user");
+        assert_eq!(config.database.wallet_db.username, "wallet_user");
+        assert_eq!(config.server.port, 4000);
+        assert_eq!(config.security.jwt.expiry_hours, 12);
+        assert_eq!(config.monitoring.logging.level, "debug");
+
+        // Verify nested values
+        assert_eq!(config.database.user_db.pool.size, 5);
+        assert_eq!(config.database.wallet_db.pool.size, 10);
+        assert_eq!(config.security.rate_limiting.login.max_attempts, 3);
+        assert_eq!(config.security.password.min_length, 10);
+
+        // Verify collections
+        assert_eq!(config.security.cors.allowed_origins.len(), 1);
+        assert_eq!(
+            config.security.cors.allowed_origins[0],
+            "http://localhost:3000"
+        );
+        assert_eq!(config.security.rate_limiting.paths.get("/test"), Some(&5));
         
-        // Verify main database config
-        assert_eq!(config.database.endpoint, "ws://test-db:8000");
-        assert_eq!(config.database.username, "test_user");
-        
-        // Verify user database config
-        let user_db = config.microservices.user_db.unwrap();
-        assert_eq!(user_db.endpoint, "ws://user-db:8000");
-        assert_eq!(user_db.username, "user_service");
-        assert_eq!(user_db.namespace, "user_ns");
-        assert_eq!(user_db.database, "user_db");
-        assert_eq!(user_db.pool.size, 5);
-        
-        // Verify wallet database config
-        let wallet_db = config.microservices.wallet_db.unwrap();
-        assert_eq!(wallet_db.endpoint, "ws://wallet-db:8001");
-        assert_eq!(wallet_db.username, "wallet_service");
-        assert_eq!(wallet_db.namespace, "wallet_ns");
-        assert_eq!(wallet_db.database, "wallet_db");
-        assert_eq!(wallet_db.pool.size, 10);
-        
+        // Verify Redis config
+        assert!(config.redis.is_some());
+        let redis = config.redis.unwrap();
+        assert_eq!(redis.url, "redis://test-redis:6379");
+        assert_eq!(redis.pool_size, 5);
+        assert_eq!(redis.prefix.unwrap(), "test_app");
     }
 
     #[test]
-    fn test_fallback_to_main_db() {
-        // Config with no microservice dbs
+    fn test_config_validation() {
+        // Valid config
         let config = AppConfig::default();
+        assert!(config.validate().is_ok());
+
+        // Invalid config (production with insecure settings)
+        let mut prod_config = AppConfig::default();
+        prod_config.environment = "production".to_string();
+
+        // Should fail validation in production
+        assert!(prod_config.validate().is_err());
+
+        // Fix the config
+        prod_config.database.user_db.endpoint = "wss://secure-db.example.com".to_string();
+        prod_config.database.user_db.username = "secure_user".to_string();
+        prod_config.database.user_db.password = "secure_password".to_string();
+        prod_config.database.wallet_db.endpoint = "wss://secure-wallet-db.example.com".to_string();
+        prod_config.database.wallet_db.username = "secure_wallet_user".to_string();
+        prod_config.database.wallet_db.password = "secure_wallet_password".to_string();
+        prod_config.security.jwt.secret =
+            "a-very-secure-and-long-jwt-secret-key-for-production-use".to_string();
+        prod_config.monitoring.sentry.dsn = "https://exampledsn@sentry.io/123456".to_string();
         
-        // Should fall back to main database
-        let user_db_config = config.get_database_config("user");
-        assert_eq!(user_db_config.endpoint, config.database.endpoint);
-        
-        let wallet_db_config = config.get_database_config("wallet");
-        assert_eq!(wallet_db_config.endpoint, config.database.endpoint);
+        if let Some(ref mut redis) = prod_config.redis {
+            redis.url = "rediss://secure-redis.example.com:6379".to_string();
+        }
+
+        // Should pass validation now
+        assert!(prod_config.validate().is_ok());
     }
 }

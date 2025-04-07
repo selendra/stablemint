@@ -1,17 +1,6 @@
 {
     "environment": "development",
     "database": {
-        "endpoint": "ws://0.0.0.0:8000",
-        "username": "root",
-        "password": "root",
-        "namespace": "surrealdb",
-        "database": "surrealdb",
-        "pool": {
-            "size": 5,
-            "connection_timeout": 3000
-        }
-    },
-    "microservices": {
         "user_db": {
             "endpoint": "ws://0.0.0.0:8000",
             "username": "root",

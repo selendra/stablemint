@@ -1,4 +1,8 @@
-pub mod schema;
+use app_error::AppError;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), AppError> {
+
+
+    Ok(())
 }
