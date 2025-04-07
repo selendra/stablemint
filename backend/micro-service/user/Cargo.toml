@@ -28,6 +28,7 @@ app-database = { workspace =  true }
 app-error = { workspace =  true }
 app-models = { workspace =  true }
 app-middleware = { workspace =  true }
+app-utils = { workspace =  true }
 
 [dev-dependencies]
 serde_json = { workspace =  true }

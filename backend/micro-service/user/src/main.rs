@@ -11,7 +11,7 @@ use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 use app_config::AppConfig;
 use app_database::{DB_ARC, db_connect::initialize_db, service::DbService};
 use app_error::AppError;
-use app_models::user::User;
+use app_models::{user::User, wallet::Wallet};
 use micro_user::schema::create_schema;
 
 #[tokio::main]
@@ -69,6 +69,7 @@ async fn main() -> Result<(), AppError> {
         .await;
 
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
+    let wallet_db = Arc::new(DbService::<Wallet>::new(db_arc, "wallets"));
 
     // Configure path-specific rate limits from our config file
     let mut path_limits = HashMap::new();
@@ -101,6 +102,7 @@ async fn main() -> Result<(), AppError> {
             config.security.jwt.expiry_hours,
         )
         .with_db(user_db)
+        .with_wallet_db(wallet_db)
         .with_rate_limiter(login_rate_limiter),
     );
 

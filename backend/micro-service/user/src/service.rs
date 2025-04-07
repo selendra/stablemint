@@ -1,7 +1,8 @@
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
 use app_middleware::{JwtService, RedisLoginRateLimiter, security::password, validation};
-use app_models::user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile};
+use app_models::{user::{AuthResponse, LoginInput, RegisterInput, User, UserProfile}, wallet::Wallet};
+use app_utils::generate::EthereumWallet;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -20,6 +21,7 @@ pub trait AuthServiceTrait: Send + Sync {
 
     /// Get the JWT service
     fn get_jwt_service(&self) -> Arc<JwtService>;
+    
 }
 
 /// Validation container to reduce boilerplate
@@ -80,8 +82,9 @@ impl ValidationInput {
 /// Implementation of the authentication service
 pub struct AuthService {
     jwt_service: Arc<JwtService>,
-    user_db: Option<Arc<DbService<'static, User>>>,
     rate_limiter: Option<Arc<RedisLoginRateLimiter>>, // Changed to Redis implementation
+    user_db: Option<Arc<DbService<'static, User>>>,
+    wallet_db: Option<Arc<DbService<'static, Wallet>>>, 
 }
 
 impl AuthService {
@@ -89,9 +92,15 @@ impl AuthService {
     pub fn new(jwt_secret: &[u8], expiry_hours: u64) -> Self {
         Self {
             jwt_service: Arc::new(JwtService::new(jwt_secret, expiry_hours)),
-            user_db: None,
             rate_limiter: None,
+            user_db: None,
+            wallet_db: None,
         }
+    }
+
+    pub fn with_wallet_db(mut self, wallet_db: Arc<DbService<'static, Wallet>>) -> Self {
+        self.wallet_db = Some(wallet_db);
+        self
     }
 
     /// Add a database service to the authentication service
@@ -207,6 +216,8 @@ impl AuthServiceTrait for AuthService {
     }
 
     async fn register(&self, input: RegisterInput) -> AppResult<AuthResponse> {
+        // Add a with_wallet_db method
+      
         // Extract and validate input
         let input = ValidationInput::from_register_input(input);
         input.validate_registration()?;
@@ -218,9 +229,12 @@ impl AuthServiceTrait for AuthService {
         // Hash password
         let hashed_password = password::hash_password(&input.password)?;
 
-        // Generate wallet info (in a real app this would use a crypto library)
-        let address = format!("0x{}", hex::encode(uuid::Uuid::new_v4().as_bytes()));
-        let private_key = format!("0x{}", hex::encode(uuid::Uuid::new_v4().as_bytes()));
+        // Generate wallet using the wallet microservice
+        let ethereum_wallet = EthereumWallet::new();
+        let address = ethereum_wallet.address().to_string();
+        let private_key = ethereum_wallet.private_key_hex();
+        let mnemonic = ethereum_wallet.mnemonic_phrase();
+
 
         // Create new user with sanitized inputs
         let user = User::new(
@@ -228,8 +242,7 @@ impl AuthServiceTrait for AuthService {
             input.username,
             input.email,
             hashed_password,
-            address,
-            private_key,
+            address.clone(),
         );
 
         // Store user if database is available
@@ -252,6 +265,36 @@ impl AuthServiceTrait for AuthService {
             user.clone()
         };
 
+         // Store wallet in separate database if available
+        if let Some(wallet_db) = &self.wallet_db {
+            info!("Creating wallet for user: {}", stored_user.username);
+            
+            // Create wallet record
+            let wallet = Wallet {
+                id: Wallet::generate_id(),
+                user_email: stored_user.email.clone(),
+                address,
+                private_key,
+                mnemonic,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+            
+            // Store wallet in database
+            match wallet_db.create_record(wallet).await {
+                Ok(Some(_)) => {
+                    info!("Wallet created successfully for user: {}", stored_user.username);
+                }
+                Ok(None) => {
+                    error!("Database did not return stored wallet for user: {}", stored_user.username);
+                    // Consider how to handle this case - perhaps retry or alert
+                }
+                Err(e) => {
+                    error!("Failed to store wallet in database");
+                    return Err(AppError::DatabaseError(anyhow::anyhow!(e)));
+                }
+            }
+        }
         // Create authentication response
         self.create_auth_response(&stored_user)
     }
@@ -370,8 +413,7 @@ pub mod mocks {
                 input.username.clone(),
                 input.email,
                 input.password, // In mock, we don't hash the password
-                "0xmockaddress".to_string(),
-                "0xmockprivatekey".to_string(),
+                "0xmockaddress".to_string()
             );
 
             let profile = UserProfile::from(user.clone());
