@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract Common {
     // More descriptive error messages
@@ -66,11 +67,17 @@ contract Capper is ReentrancyGuard {
 contract AdvaRoleController is AccessControl, Capper, Common {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant CAPPER_ROLE = keccak256("CAPPER_ROLE");
+    bytes32 public constant RECOVER_ROLE = keccak256("RECOVER_ROLE");
+    bytes32 public constant BANNER_ROLE = keccak256("BANNER_ROLE");
+    bytes32 public constant PAUASER_ROLE = keccak256("PAUASER_ROLE");
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
         _grantRole(CAPPER_ROLE, msg.sender);
+        _grantRole(RECOVER_ROLE, msg.sender);
+        _grantRole(BANNER_ROLE, msg.sender);
+        _grantRole(PAUASER_ROLE, msg.sender);
     }
 
     function setCap(
