@@ -2,7 +2,7 @@ use app_error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
 // Include the config loader module
-mod config_loader;
+pub mod config_loader;
 pub use config_loader::*;
 
 /// The simplified configuration system uses only JSON configuration files
@@ -155,6 +155,20 @@ impl From<&AppConfig> for JwtConfig {
         Self {
             secret: config.security.jwt.secret.clone().into_bytes(),
             expiry_hours: config.security.jwt.expiry_hours,
+        }
+    }
+}
+
+/// Helper function for backward compatibility
+/// Converts from the new DatabaseConfig to the legacy DatabaseConfig
+impl From<&config_loader::DatabaseConfig> for DatabaseConfig {
+    fn from(config: &config_loader::DatabaseConfig) -> Self {
+        Self {
+            endpoint: config.endpoint.clone(),
+            username: config.username.clone(),
+            password: config.password.clone(),
+            namespace: config.namespace.clone(),
+            database: config.database.clone(),
         }
     }
 }

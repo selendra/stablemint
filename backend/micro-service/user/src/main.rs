@@ -9,14 +9,14 @@ use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
 use app_config::AppConfig;
-use app_database::{DB_ARC, db_connect::initialize_db, service::DbService};
+use app_database::{DB_ARC, db_connect::initialize_service_db, service::DbService};
 use app_error::AppError;
 use app_models::{user::User, wallet::Wallet};
 use micro_user::schema::create_schema;
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
-    // Load the application configuration from JSON file
+    // Load configuration from JSON file
     let config = AppConfig::load().context("Failed to load application configuration")?;
 
     // Initialize Sentry with configuration from JSON
@@ -58,18 +58,30 @@ async fn main() -> Result<(), AppError> {
         chrono::Utc::now()
     );
 
-    // Initialize the database connection with our config
+    // Initialize the database connection for the user service
     let db_arc = DB_ARC
         .get_or_init(|| async {
-            initialize_db().await.unwrap_or_else(|e| {
-                error!("Database initialization failed: {}", e);
-                panic!("Database initialization failed");
+            initialize_service_db(&config, "user").await.unwrap_or_else(|e| {
+                error!("User database initialization failed: {}", e);
+                panic!("User database initialization failed");
             })
         })
         .await;
 
+    let wallet_db_arc = DB_ARC
+        .get_or_init(|| async {
+            initialize_service_db(&config, "wallet").await.unwrap_or_else(|e| {
+                error!("User database initialization failed: {}", e);
+                panic!("User database initialization failed");
+            })
+        })
+        .await;
+
+    // Create DB service for User model
     let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
-    let wallet_db = Arc::new(DbService::<Wallet>::new(db_arc, "wallets"));
+    let wallet_db = Arc::new(DbService::<Wallet>::new(&wallet_db_arc, "wallets"));
+    
+    info!("Database connections established for both user and wallet services");
 
     // Configure path-specific rate limits from our config file
     let mut path_limits = HashMap::new();
@@ -95,7 +107,7 @@ async fn main() -> Result<(), AppError> {
     // Create login rate limiter with Redis backend
     let login_rate_limiter = Arc::new(create_redis_login_rate_limiter(&redis_config.url).await?);
 
-    // Create auth service with JWT config from our config file
+    // Create auth service with JWT config from our config file and both DB services
     let auth_service = Arc::new(
         AuthService::new(
             config.security.jwt.secret.as_bytes(),

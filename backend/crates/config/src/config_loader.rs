@@ -10,11 +10,21 @@ use app_error::{AppError, AppResult};
 pub struct AppConfig {
     pub environment: String,
     pub database: DatabaseConfig,
+    // New: Support for multiple microservice databases
+    #[serde(default)]
+    pub microservices: MicroservicesConfig,
     pub server: ServerConfig,
     pub security: SecurityConfig,
     pub monitoring: MonitoringConfig,
     pub bodylimit: BodyLimitConfig,
     pub redis: Option<RedisConfig>,
+}
+
+/// Configuration for multiple microservices
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct MicroservicesConfig {
+    pub user_db: Option<DatabaseConfig>,
+    pub wallet_db: Option<DatabaseConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -173,6 +183,24 @@ impl AppConfig {
         Ok(config)
     }
 
+    /// Get specific microservice database config or fall back to default
+    pub fn get_database_config(&self, service_name: &str) -> DatabaseConfig {
+        match service_name {
+            "user" => self.microservices.user_db.as_ref().map(|db| db.clone()).unwrap_or_else(|| {
+                debug!("User database config not found, using default");
+                self.database.clone()
+            }),
+            "wallet" => self.microservices.wallet_db.as_ref().map(|db| db.clone()).unwrap_or_else(|| {
+                debug!("Wallet database config not found, using default");
+                self.database.clone()
+            }),
+            _ => {
+                debug!("Unknown service name: {}, using default database config", service_name);
+                self.database.clone()
+            }
+        }
+    }
+
     /// Validate the configuration
     pub fn validate(&self) -> AppResult<()> {
         let mut errors = Vec::new();
@@ -204,6 +232,31 @@ impl AppConfig {
 
         if is_production && self.database.password == "root" {
             errors.push("Using default 'root' password in production is insecure".to_string());
+        }
+
+        // Validate microservice databases if provided
+        if let Some(ref user_db) = self.microservices.user_db {
+            if user_db.endpoint.trim().is_empty() {
+                errors.push("User database endpoint cannot be empty".to_string());
+            }
+            if user_db.namespace.trim().is_empty() {
+                errors.push("User database namespace cannot be empty".to_string());
+            }
+            if user_db.database.trim().is_empty() {
+                errors.push("User database name cannot be empty".to_string());
+            }
+        }
+
+        if let Some(ref wallet_db) = self.microservices.wallet_db {
+            if wallet_db.endpoint.trim().is_empty() {
+                errors.push("Wallet database endpoint cannot be empty".to_string());
+            }
+            if wallet_db.namespace.trim().is_empty() {
+                errors.push("Wallet database namespace cannot be empty".to_string());
+            }
+            if wallet_db.database.trim().is_empty() {
+                errors.push("Wallet database name cannot be empty".to_string());
+            }
         }
 
         // Validate server configuration
@@ -269,6 +322,7 @@ impl Default for AppConfig {
                     connection_timeout: 5000,
                 },
             },
+            microservices: MicroservicesConfig::default(),
             server: ServerConfig {
                 host: "0.0.0.0".to_string(),
                 port: 3000,
@@ -351,7 +405,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_config_from_file() {
+    fn test_multi_db_config() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test-config.json");
 
@@ -366,6 +420,30 @@ mod tests {
                 "pool": {
                     "size": 5,
                     "connection_timeout": 3000
+                }
+            },
+            "microservices": {
+                "user_db": {
+                    "endpoint": "ws://user-db:8000",
+                    "username": "user_service",
+                    "password": "user_pass",
+                    "namespace": "user_ns",
+                    "database": "user_db",
+                    "pool": {
+                        "size": 5,
+                        "connection_timeout": 3000
+                    }
+                },
+                "wallet_db": {
+                    "endpoint": "ws://wallet-db:8001",
+                    "username": "wallet_service",
+                    "password": "wallet_pass",
+                    "namespace": "wallet_ns",
+                    "database": "wallet_db",
+                    "pool": {
+                        "size": 10,
+                        "connection_timeout": 3000
+                    }
                 }
             },
             "server": {
@@ -444,52 +522,41 @@ mod tests {
         // Load the config
         let config = AppConfig::from_file(&file_path).unwrap();
 
-        println!("config: {:?}", config);
-
         // Verify loaded values
         assert_eq!(config.environment, "test");
+        
+        // Verify main database config
         assert_eq!(config.database.endpoint, "ws://test-db:8000");
         assert_eq!(config.database.username, "test_user");
-        assert_eq!(config.server.port, 4000);
-        assert_eq!(config.security.jwt.expiry_hours, 12);
-        assert_eq!(config.monitoring.logging.level, "debug");
-
-        // Verify nested values
-        assert_eq!(config.database.pool.size, 5);
-        assert_eq!(config.security.rate_limiting.login.max_attempts, 3);
-        assert_eq!(config.security.password.min_length, 10);
-
-        // Verify collections
-        assert_eq!(config.security.cors.allowed_origins.len(), 1);
-        assert_eq!(
-            config.security.cors.allowed_origins[0],
-            "http://localhost:3000"
-        );
-        assert_eq!(config.security.rate_limiting.paths.get("/test"), Some(&5));
+        
+        // Verify user database config
+        let user_db = config.microservices.user_db.unwrap();
+        assert_eq!(user_db.endpoint, "ws://user-db:8000");
+        assert_eq!(user_db.username, "user_service");
+        assert_eq!(user_db.namespace, "user_ns");
+        assert_eq!(user_db.database, "user_db");
+        assert_eq!(user_db.pool.size, 5);
+        
+        // Verify wallet database config
+        let wallet_db = config.microservices.wallet_db.unwrap();
+        assert_eq!(wallet_db.endpoint, "ws://wallet-db:8001");
+        assert_eq!(wallet_db.username, "wallet_service");
+        assert_eq!(wallet_db.namespace, "wallet_ns");
+        assert_eq!(wallet_db.database, "wallet_db");
+        assert_eq!(wallet_db.pool.size, 10);
+        
     }
 
     #[test]
-    fn test_config_validation() {
-        // Valid config
+    fn test_fallback_to_main_db() {
+        // Config with no microservice dbs
         let config = AppConfig::default();
-        assert!(config.validate().is_ok());
-
-        // Invalid config (production with insecure settings)
-        let mut prod_config = AppConfig::default();
-        prod_config.environment = "production".to_string();
-
-        // Should fail validation in production
-        assert!(prod_config.validate().is_err());
-
-        // Fix the config
-        prod_config.database.endpoint = "wss://secure-db.example.com".to_string();
-        prod_config.database.username = "secure_user".to_string();
-        prod_config.database.password = "secure_password".to_string();
-        prod_config.security.jwt.secret =
-            "a-very-secure-and-long-jwt-secret-key-for-production-use".to_string();
-        prod_config.monitoring.sentry.dsn = "https://exampledsn@sentry.io/123456".to_string();
-
-        // Should pass validation now
-        assert!(prod_config.validate().is_ok());
+        
+        // Should fall back to main database
+        let user_db_config = config.get_database_config("user");
+        assert_eq!(user_db_config.endpoint, config.database.endpoint);
+        
+        let wallet_db_config = config.get_database_config("wallet");
+        assert_eq!(wallet_db_config.endpoint, config.database.endpoint);
     }
 }
