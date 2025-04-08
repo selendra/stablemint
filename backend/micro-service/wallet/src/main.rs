@@ -1,17 +1,22 @@
 use anyhow::Context;
 use app_config::AppConfig;
-use app_database::{db_connect::initialize_wallet_db, DB_ARC};
-use app_database::service::DbService;
+use app_database::{
+    DB_ARC,
+    db_connect::{initialize_user_db, initialize_wallet_db},
+    service::DbService,
+};
 use app_error::AppError;
-use app_models::wallet::Wallet;
-use std::sync::Arc;
+use app_middleware::{JwtService, limits::rate_limiter::create_redis_api_rate_limiter};
+use app_models::{user::User, wallet::Wallet};
+use micro_wallet::{routes, schema::create_schema, service::WalletService};
+use std::{collections::HashMap, sync::Arc};
 use tokio::net::TcpListener;
-use tracing::{error, info, Level};
-use tracing_subscriber::{layer::SubscriberExt, FmtSubscriber};
+use tracing::{Level, error, info};
+use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
-    // Load configuration from JSON file
+    // Load the application configuration from JSON file
     let config = AppConfig::load().context("Failed to load application configuration")?;
 
     // Initialize Sentry with configuration from JSON
@@ -41,52 +46,90 @@ async fn main() -> Result<(), AppError> {
         "error" => Level::ERROR,
         _ => Level::INFO,
     };
-
     let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
-
     let subscriber = subscriber.with(sentry_tracing::layer());
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
-
     info!(
         "Starting wallet service in {} environment at {}",
         config.environment,
         chrono::Utc::now()
     );
 
-    let _wallet_db_arc = DB_ARC
-    .get_or_init(|| async {
-        initialize_wallet_db().await.unwrap_or_else(|e| {
-            error!("Wallet database initialization failed: {}", e);
-            panic!("Wallet database initialization failed");
+    let wallet_db_arc = DB_ARC
+        .get_or_init(|| async {
+            initialize_wallet_db().await.unwrap_or_else(|e| {
+                error!("Wallet database initialization failed: {}", e);
+                panic!("Wallet database initialization failed");
+            })
         })
-    })
-    .await;
+        .await;
+    let wallet_db = Arc::new(DbService::<Wallet>::new(&wallet_db_arc, "wallets"));
 
-    // // Create DB service for Wallet model
-    // let _wallet_db = Arc::new(DbService::<Wallet>::new(&wallet_db_arc, "wallets"));
+    let user_db_arc = DB_ARC
+        .get_or_init(|| async {
+            initialize_user_db().await.unwrap_or_else(|e| {
+                error!("Database initialization failed: {}", e);
+                panic!("Database initialization failed");
+            })
+        })
+        .await;
+    let user_db = Arc::new(DbService::<User>::new(&user_db_arc, "users"));
 
-    info!("Wallet database connection established");
+    // Configure path-specific rate limits from our config file
+    let mut path_limits = HashMap::new();
 
-    // TODO: Initialize wallet-specific services and routes
-    
+    // Convert path-specific limits from the config
+    for (path, limit) in &config.security.rate_limiting.paths {
+        path_limits.insert(path.clone(), *limit);
+    }
+
+    // Initialize Redis configuration
+    let redis_config = config.redis.clone().ok_or_else(|| {
+        AppError::ConfigError(anyhow::anyhow!(
+            "Redis configuration is required but not provided"
+        ))
+    })?;
+
+    info!("Initializing Redis-based distributed rate limiting");
+
+    // Create API rate limiter with Redis backend
+    let api_rate_limiter =
+        Arc::new(create_redis_api_rate_limiter(&redis_config.url, Some(path_limits)).await?);
+
+    // Create JWT service for token validation
+    let jwt_service = Arc::new(JwtService::new(
+        config.security.jwt.secret.as_bytes(),
+        config.security.jwt.expiry_hours,
+    ));
+
+    // Create wallet service
+    let wallet_service = Arc::new(
+        WalletService::new()
+            .with_wallet_db(wallet_db)
+            .with_user_db(user_db),
+    );
+
+    // Create GraphQL schema
+    let schema = create_schema();
+
+    // Configure application routes
+    let app = routes::create_routes(schema, wallet_service, api_rate_limiter, jwt_service);
+
     // Bind server to address and start it
-    // Using a different port than the user service
-    let wallet_port = config.server.port + 1;  // Example: use a different port
+    // Use a different port than the user service
+    let wallet_port = config.server.port + 1; // Use a different port
     let address = format!("{}:{}", config.server.host, wallet_port);
     let listener = TcpListener::bind(&address)
         .await
         .context(format!("Failed to bind to address: {}", address))?;
 
-    info!("Wallet service API available at: http://{}", address);
+    info!(
+        "Wallet service GraphQL playground available at: http://{}/graphql",
+        address
+    );
 
-    // TODO: Create and start wallet-specific server 
-    // For now, just keep the service alive
+    // Start server with graceful error handling
     info!("Wallet service starting on {}", address);
-    
-    // Example placeholder for future wallet-specific server implementation
-    let app = axum::Router::new()
-        .route("/", axum::routing::get(|| async { "Wallet Service Healthy" }));
-    
     axum::serve(listener, app).await.context("Server error")?;
 
     Ok(())

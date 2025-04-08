@@ -20,7 +20,6 @@ pub trait AuthServiceTrait: Send + Sync {
 
     /// Get the JWT service
     fn get_jwt_service(&self) -> Arc<JwtService>;
-    
 }
 
 /// Validation container to reduce boilerplate
@@ -209,7 +208,7 @@ impl AuthServiceTrait for AuthService {
 
     async fn register(&self, input: RegisterInput) -> AppResult<AuthResponse> {
         // Add a with_wallet_db method
-      
+
         // Extract and validate input
         let input = ValidationInput::from_register_input(input);
         input.validate_registration()?;
@@ -222,12 +221,7 @@ impl AuthServiceTrait for AuthService {
         let hashed_password = password::hash_password(&input.password)?;
 
         // Create new user with sanitized inputs
-        let user = User::new(
-            input.name,
-            input.username,
-            input.email,
-            hashed_password,
-        );
+        let user = User::new(input.name, input.username, input.email, hashed_password);
 
         // Store user if database is available
         let stored_user = if let Some(user_db) = &self.user_db {

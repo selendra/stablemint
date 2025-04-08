@@ -1,17 +1,23 @@
+// backend/micro-service/user/src/main.rs
 use anyhow::Context;
 use app_middleware::limits::rate_limiter::{
     create_redis_api_rate_limiter, create_redis_login_rate_limiter,
 };
 use micro_user::{routes, service::AuthService};
+use micro_wallet::service::{WalletService, WalletServiceTrait};
 use std::{collections::HashMap, sync::Arc};
 use tokio::net::TcpListener;
 use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
 use app_config::AppConfig;
-use app_database::{db_connect::initialize_user_db, service::DbService, DB_ARC};
+use app_database::{
+    DB_ARC,
+    db_connect::{initialize_user_db, initialize_wallet_db},
+    service::DbService,
+};
 use app_error::AppError;
-use app_models::user::User;
+use app_models::{user::User, wallet::Wallet};
 use micro_user::schema::create_schema;
 
 #[tokio::main]
@@ -56,7 +62,7 @@ async fn main() -> Result<(), AppError> {
     );
 
     // Initialize the database connection with our config
-    let db_arc = DB_ARC
+    let user_db_arc = DB_ARC
         .get_or_init(|| async {
             initialize_user_db().await.unwrap_or_else(|e| {
                 error!("Database initialization failed: {}", e);
@@ -65,7 +71,17 @@ async fn main() -> Result<(), AppError> {
         })
         .await;
 
-    let user_db = Arc::new(DbService::<User>::new(db_arc, "users"));
+    let user_db = Arc::new(DbService::<User>::new(user_db_arc, "users"));
+
+    let wallet_db_arc = DB_ARC
+        .get_or_init(|| async {
+            initialize_wallet_db().await.unwrap_or_else(|e| {
+                error!("Wallet database initialization failed: {}", e);
+                panic!("Wallet database initialization failed");
+            })
+        })
+        .await;
+    let wallet_db = Arc::new(DbService::<Wallet>::new(&wallet_db_arc, "wallets"));
 
     // Configure path-specific rate limits from our config file
     let mut path_limits = HashMap::new();
@@ -101,11 +117,21 @@ async fn main() -> Result<(), AppError> {
         .with_rate_limiter(login_rate_limiter),
     );
 
+    // Create wallet service for automatic wallet creation
+    let wallet_service = Arc::new(
+        WalletService::new()
+            .with_wallet_db(wallet_db)
+            .with_user_db(Arc::new(DbService::<User>::new(user_db_arc, "users"))),
+    );
+
     // Create GraphQL schema
     let schema = create_schema();
 
     // Configure application routes
-    let app = routes::create_routes(schema, auth_service, api_rate_limiter);
+    let mut app = routes::create_routes(schema, auth_service, api_rate_limiter);
+
+    // Add wallet service to the app extensions
+    app = app.layer(axum::extract::Extension(wallet_service));
 
     // Bind server to address and start it
     let address = format!("{}:{}", config.server.host, config.server.port);

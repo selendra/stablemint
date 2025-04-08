@@ -1,7 +1,7 @@
 use async_graphql::SimpleObject;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -10,8 +10,8 @@ pub struct Wallet {
     pub id: Thing,
     pub user_email: String,
     pub address: String,
-    pub private_key: String,  // Implement encryption for production
-    pub mnemonic: String,     // Implement encryption for production
+    pub private_key: String, // Implement encryption for production
+    pub mnemonic: String,    // Implement encryption for production
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]
@@ -25,18 +25,13 @@ impl Wallet {
     }
 
     // Create a new wallet with all required fields
-    pub fn new(
-        user_email: String,
-        address: String,
-        private_key: String,
-        mnemonic: String,
-    ) -> Self {
+    pub fn new(user_email: String, address: String, private_key: String, mnemonic: String) -> Self {
         let now = Utc::now();
         Self {
             id: Self::generate_id(),
             user_email,
             address,
-            private_key, 
+            private_key,
             mnemonic,
             created_at: now,
             updated_at: now,

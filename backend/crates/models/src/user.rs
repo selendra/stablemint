@@ -1,3 +1,4 @@
+// backend/crates/models/src/user.rs
 use async_graphql::{InputObject, SimpleObject};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,9 @@ pub struct User {
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
+    // Add optional wallet reference
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wallet_id: Option<String>,
 }
 
 impl User {
@@ -25,12 +29,7 @@ impl User {
     }
 
     // Create a new user with default values for fields that aren't provided
-    pub fn new(
-        name: String,
-        username: String,
-        email: String,
-        password: String,
-    ) -> Self {
+    pub fn new(name: String, username: String, email: String, password: String) -> Self {
         let now = Utc::now();
         Self {
             id: Self::generate_id(),
@@ -40,7 +39,14 @@ impl User {
             password,
             created_at: now,
             updated_at: now,
+            wallet_id: None,
         }
+    }
+
+    // Associate a wallet with this user
+    pub fn set_wallet(&mut self, wallet_id: String) {
+        self.wallet_id = Some(wallet_id);
+        self.updated_at = Utc::now();
     }
 }
 
@@ -51,6 +57,7 @@ pub struct UserProfile {
     pub username: String,
     pub email: String,
     pub created_at: DateTime<Utc>,
+    pub wallet_id: Option<String>,
 }
 
 // Convert User to UserProfile (hiding sensitive data)
@@ -62,6 +69,7 @@ impl From<User> for UserProfile {
             username: user.username,
             email: user.email,
             created_at: user.created_at,
+            wallet_id: user.wallet_id,
         }
     }
 }

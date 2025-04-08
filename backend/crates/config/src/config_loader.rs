@@ -147,9 +147,9 @@ impl AppConfig {
 
     /// Load configuration from the default location
     pub fn load() -> AppResult<Self> {
-        let config_content = std::str::from_utf8(include_bytes!("../res/app-config.json"))
-            .expect("Invalid UTF-8");
-        
+        let config_content =
+            std::str::from_utf8(include_bytes!("../res/app-config.json")).expect("Invalid UTF-8");
+
         // Try to load the config from file
         let config = match serde_json::from_str::<AppConfig>(config_content) {
             Ok(conf) => {
@@ -157,7 +157,10 @@ impl AppConfig {
                 conf
             }
             Err(e) => {
-                warn!("Failed to load config file: {}. Using default configuration.", e);
+                warn!(
+                    "Failed to load config file: {}. Using default configuration.",
+                    e
+                );
                 Self::default()
             }
         };
@@ -173,8 +176,18 @@ impl AppConfig {
         let is_production = self.environment == "production";
 
         // Validate user and wallet database configurations
-        self.validate_database_config(&self.database.user_db, "user_db", is_production, &mut errors);
-        self.validate_database_config(&self.database.wallet_db, "wallet_db", is_production, &mut errors);
+        self.validate_database_config(
+            &self.database.user_db,
+            "user_db",
+            is_production,
+            &mut errors,
+        );
+        self.validate_database_config(
+            &self.database.wallet_db,
+            "wallet_db",
+            is_production,
+            &mut errors,
+        );
 
         // Validate server configuration
         if self.server.host.trim().is_empty() {
@@ -186,8 +199,10 @@ impl AppConfig {
         }
 
         // Validate security configuration
-        if is_production && (self.security.jwt.secret.len() < 32 || 
-                           self.security.jwt.secret == "your-strong-secret-key-here") {
+        if is_production
+            && (self.security.jwt.secret.len() < 32
+                || self.security.jwt.secret == "your-strong-secret-key-here")
+        {
             errors.push("JWT secret is not secure for production use".to_string());
         }
 
@@ -201,7 +216,9 @@ impl AppConfig {
             if redis_config.url.trim().is_empty() {
                 errors.push("Redis URL cannot be empty".to_string());
             } else if is_production && !redis_config.url.starts_with("rediss://") {
-                errors.push("Production should use a secure 'rediss://' Redis connection".to_string());
+                errors.push(
+                    "Production should use a secure 'rediss://' Redis connection".to_string(),
+                );
             }
 
             if redis_config.pool_size == 0 {
@@ -217,21 +234,26 @@ impl AppConfig {
         }
         Ok(())
     }
-    
+
     /// Helper function to validate individual database configs
     fn validate_database_config(
-        &self, 
-        db_config: &SurrealDbConfig, 
+        &self,
+        db_config: &SurrealDbConfig,
         db_name: &str,
-        is_production: bool, 
-        errors: &mut Vec<String>
+        is_production: bool,
+        errors: &mut Vec<String>,
     ) {
         // Endpoint validation
         if db_config.endpoint.trim().is_empty() {
             errors.push(format!("{} endpoint cannot be empty", db_name));
-        } else if is_production && !db_config.endpoint.starts_with("wss://") && 
-                                  !db_config.endpoint.contains("memory") {
-            errors.push(format!("{} should use a secure 'wss://' database connection in production", db_name));
+        } else if is_production
+            && !db_config.endpoint.starts_with("wss://")
+            && !db_config.endpoint.contains("memory")
+        {
+            errors.push(format!(
+                "{} should use a secure 'wss://' database connection in production",
+                db_name
+            ));
         }
 
         // Namespace validation
@@ -247,11 +269,17 @@ impl AppConfig {
         // Credentials validation in production
         if is_production {
             if db_config.username == "root" {
-                errors.push(format!("Using default 'root' username in {} in production is insecure", db_name));
+                errors.push(format!(
+                    "Using default 'root' username in {} in production is insecure",
+                    db_name
+                ));
             }
 
             if db_config.password == "root" {
-                errors.push(format!("Using default 'root' password in {} in production is insecure", db_name));
+                errors.push(format!(
+                    "Using default 'root' password in {} in production is insecure",
+                    db_name
+                ));
             }
         }
     }
@@ -500,7 +528,7 @@ mod tests {
             "http://localhost:3000"
         );
         assert_eq!(config.security.rate_limiting.paths.get("/test"), Some(&5));
-        
+
         // Verify Redis config
         assert!(config.redis.is_some());
         let redis = config.redis.unwrap();
@@ -532,7 +560,7 @@ mod tests {
         prod_config.security.jwt.secret =
             "a-very-secure-and-long-jwt-secret-key-for-production-use".to_string();
         prod_config.monitoring.sentry.dsn = "https://exampledsn@sentry.io/123456".to_string();
-        
+
         if let Some(ref mut redis) = prod_config.redis {
             redis.url = "rediss://secure-redis.example.com:6379".to_string();
         }

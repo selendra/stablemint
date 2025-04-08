@@ -14,7 +14,6 @@ mutation {
       name
       username
       email
-      address
       createdAt
     }
   }
@@ -42,7 +41,6 @@ mutation {
       name
       username
       email
-      address
       createdAt
     }
   }
@@ -58,7 +56,6 @@ query {
     name
     username
     email
-    address
     createdAt
   }
 }

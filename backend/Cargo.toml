@@ -18,7 +18,6 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
-
 # utilities dependencies
 regex = "1.11.1"
 dotenv = "0.15.0"
@@ -28,6 +27,7 @@ lazy_static = "1.5.0"
 serde_json = "1.0.140"
 serde = { version = "1.0.219", features = ["derive"] }
 chrono = { version = "0.4.40", features = ["serde"] }
+
 
 # tracing dependencies
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
@@ -90,4 +90,4 @@ app-middleware = { path = "crates/middleware" }
 app-utils = { path = "crates/utils" }
 
 micro-user = { path = "micro-service/user" }
-micro-wallet = { path = "micro-service/" }
+micro-wallet = { path = "micro-service/wallet" }

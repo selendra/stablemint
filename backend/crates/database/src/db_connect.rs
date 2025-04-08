@@ -1,9 +1,9 @@
 use anyhow::Context;
-use app_config::{AppConfig,  SurrealDbConfig};
+use app_config::{AppConfig, SurrealDbConfig};
 use app_error::AppError;
 use std::sync::Arc;
 
-use crate::{service::DbCredentials, Database};
+use crate::{Database, service::DbCredentials};
 
 // Common setup code extracted to reduce duplication
 async fn setup_db_config(db_config: &SurrealDbConfig) -> Result<(bool, usize), AppError> {
@@ -32,7 +32,7 @@ async fn setup_db_config(db_config: &SurrealDbConfig) -> Result<(bool, usize), A
 pub async fn initialize_user_db() -> Result<Arc<Database>, AppError> {
     // Load configuration from JSON file
     let config = AppConfig::load().context("Failed to load configuration")?;
-    
+
     let db_config = config.database.user_db;
     let (_is_secure, max_connections) = setup_db_config(&db_config).await?;
 
@@ -56,15 +56,12 @@ pub async fn initialize_user_db() -> Result<Arc<Database>, AppError> {
 pub async fn initialize_wallet_db() -> Result<Arc<Database>, AppError> {
     // Load configuration from JSON file
     let config = AppConfig::load().context("Failed to load configuration")?;
-    
+
     let db_config = config.database.wallet_db;
     let (_is_secure, max_connections) = setup_db_config(&db_config).await?;
 
     // Create credentials from configuration
-    let credentials = DbCredentials::new(
-        db_config.username.clone(), 
-        db_config.password.clone()
-    );
+    let credentials = DbCredentials::new(db_config.username.clone(), db_config.password.clone());
 
     let db = Database::initialize(
         &db_config.endpoint,
