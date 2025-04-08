@@ -37,8 +37,13 @@ impl WalletMutation {
         // Get user by ID from the claims
         let user = wallet_service.get_user_by_id(&claims.sub).await?;
 
+
         // Create wallet for the user
-        wallet_service.create_wallet(&user.email).await
+        let wallet_info = wallet_service.create_wallet(&user.email).await?;
+
+        wallet_service.associate_wallet_with_user(&claims.sub, &wallet_info.id).await?;
+
+        Ok(wallet_info)
     }
 
     // Transfer funds from wallet (requires PIN)

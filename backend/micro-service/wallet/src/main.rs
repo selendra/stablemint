@@ -1,9 +1,7 @@
 use anyhow::Context;
 use app_config::AppConfig;
 use app_database::{
-    DB_ARC,
-    db_connect::{initialize_user_db, initialize_wallet_db},
-    service::DbService,
+    db_connect::{initialize_user_db, initialize_wallet_db}, service::DbService, USER_DB_ARC, WALLET_DB_ARC
 };
 use app_error::AppError;
 use app_middleware::{JwtService, limits::rate_limiter::create_redis_api_rate_limiter};
@@ -55,7 +53,7 @@ async fn main() -> Result<(), AppError> {
         chrono::Utc::now()
     );
 
-    let wallet_db_arc = DB_ARC
+    let wallet_db_arc = WALLET_DB_ARC
         .get_or_init(|| async {
             initialize_wallet_db().await.unwrap_or_else(|e| {
                 error!("Wallet database initialization failed: {}", e);
@@ -65,7 +63,7 @@ async fn main() -> Result<(), AppError> {
         .await;
     let wallet_db = Arc::new(DbService::<Wallet>::new(&wallet_db_arc, "wallets"));
 
-    let user_db_arc = DB_ARC
+    let user_db_arc = USER_DB_ARC
         .get_or_init(|| async {
             initialize_user_db().await.unwrap_or_else(|e| {
                 error!("Database initialization failed: {}", e);

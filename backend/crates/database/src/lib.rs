@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use surrealdb::engine::any::Any;
 use tokio::sync::OnceCell;
 
-pub static DB_ARC: OnceCell<Arc<Database>> = OnceCell::const_new();
-
+pub static USER_DB_ARC: OnceCell<Arc<Database>> = OnceCell::const_new();
+pub static WALLET_DB_ARC: OnceCell<Arc<Database>> = OnceCell::const_new();
 pub struct ConnectionPool {
     pub connection_url: String,
     pub connections: Arc<Mutex<Vec<surrealdb::Surreal<Any>>>>,

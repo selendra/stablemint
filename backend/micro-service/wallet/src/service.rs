@@ -30,6 +30,9 @@ pub trait WalletServiceTrait: Send + Sync {
 
     /// Get wallet balance (for now returns a placeholder)
     async fn get_balance(&self, wallet_id: &str) -> AppResult<f64>;
+    
+    /// Associate a wallet with a user by updating the user's wallet_id field
+    async fn associate_wallet_with_user(&self, user_id: &str, wallet_id: &str) -> AppResult<()>;
 }
 
 /// Implementation of the wallet service
@@ -303,6 +306,43 @@ impl WalletServiceTrait for WalletService {
             )))
         }
     }
+    
+    async fn associate_wallet_with_user(&self, user_id: &str, wallet_id: &str) -> AppResult<()> {
+        if let Some(user_db) = &self.user_db {
+            // Clean the user ID (remove surrounding angle brackets if present)
+            let clean_id = user_id
+                .trim_start_matches('⟨')
+                .trim_end_matches('⟩')
+                .to_string();
+                
+            // Get the user
+            let mut user = user_db
+                .get_record_by_id(&clean_id)
+                .await
+                .map_err(|e| {
+                    error!("Database error when fetching user: {}", e);
+                    AppError::DatabaseError(anyhow::anyhow!(e))
+                })?
+                .ok_or_else(|| AppError::NotFoundError(format!("User with ID '{}' not found", clean_id)))?;
+            
+            // Update the wallet_id field
+            user.wallet_id = Some(wallet_id.to_string());
+            user.updated_at = chrono::Utc::now();
+            
+            // Save the updated user
+            user_db.update_record(&clean_id, user).await.map_err(|e| {
+                error!("Failed to update user with wallet ID: {}", e);
+                AppError::DatabaseError(anyhow::anyhow!(e))
+            })?;
+            
+            info!("Associated wallet {} with user {}", wallet_id, clean_id);
+            Ok(())
+        } else {
+            Err(AppError::ServerError(anyhow::anyhow!(
+                "User database not available"
+            )))
+        }
+    }
 }
 
 // For testing purposes
@@ -432,6 +472,20 @@ pub mod mocks {
                 Err(AppError::NotFoundError(format!(
                     "Wallet with ID '{}' not found",
                     wallet_id
+                )))
+            }
+        }
+        
+        async fn associate_wallet_with_user(&self, user_id: &str, wallet_id: &str) -> AppResult<()> {
+            let mut users = self.users.lock().unwrap();
+            if let Some(user) = users.iter_mut().find(|u| u.id.id.to_string() == user_id) {
+                user.wallet_id = Some(wallet_id.to_string());
+                user.updated_at = Utc::now();
+                Ok(())
+            } else {
+                Err(AppError::NotFoundError(format!(
+                    "User with ID '{}' not found",
+                    user_id
                 )))
             }
         }

@@ -1,4 +1,4 @@
-use app_database::{DB_ARC, db_connect::initialize_memory_db, service::DbService};
+use app_database::{USER_DB_ARC, db_connect::initialize_memory_db, service::DbService};
 use app_error::AppResult;
 use app_middleware::limits::rate_limiter::{RateLimitConfig, RedisRateLimiter};
 use app_models::user::User;
@@ -16,7 +16,7 @@ use tower::ServiceExt;
 async fn setup_test_app() -> AppResult<axum::Router> {
     // Setup in-memory database
 
-    let db_arc = DB_ARC
+    let db_arc = USER_DB_ARC
         .get_or_init(|| async {
             initialize_memory_db().await.unwrap_or_else(|_e| {
                 panic!("Database initialization failed");
