@@ -12,7 +12,6 @@ pub struct User {
     pub username: String,
     pub email: String,
     pub password: String,
-    pub address: String,
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]
@@ -31,7 +30,6 @@ impl User {
         username: String,
         email: String,
         password: String,
-        address: String,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -40,7 +38,6 @@ impl User {
             username,
             email,
             password,
-            address,
             created_at: now,
             updated_at: now,
         }
@@ -53,7 +50,6 @@ pub struct UserProfile {
     pub name: String,
     pub username: String,
     pub email: String,
-    pub address: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -65,7 +61,6 @@ impl From<User> for UserProfile {
             name: user.name,
             username: user.username,
             email: user.email,
-            address: user.address,
             created_at: user.created_at,
         }
     }

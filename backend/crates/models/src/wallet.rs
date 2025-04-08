@@ -1,3 +1,4 @@
+use async_graphql::SimpleObject;
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
 use chrono::{DateTime, Utc};
@@ -44,7 +45,7 @@ impl Wallet {
 }
 
 // For API responses (without sensitive data)
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, SimpleObject, Serialize, Deserialize, Clone)]
 pub struct WalletInfo {
     pub id: String,
     pub user_email: String,
