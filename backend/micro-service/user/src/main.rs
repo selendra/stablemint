@@ -4,7 +4,7 @@ use app_middleware::limits::rate_limiter::{
     create_redis_api_rate_limiter, create_redis_login_rate_limiter,
 };
 use micro_user::{routes, service::AuthService};
-use micro_wallet::service::{WalletService, WalletServiceTrait};
+use micro_wallet::service::WalletService;
 use std::{collections::HashMap, sync::Arc};
 use tokio::net::TcpListener;
 use tracing::{Level, error, info};
