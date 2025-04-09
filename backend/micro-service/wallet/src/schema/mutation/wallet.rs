@@ -11,7 +11,6 @@ use crate::service::{WalletService, WalletServiceTrait};
 
 #[derive(InputObject)]
 pub struct TransferInput {
-    pub wallet_id: String,
     pub to_address: String,
     pub amount: f64,
     pub pin: String,
@@ -24,7 +23,6 @@ pub struct CreateWalletInput {
 
 #[derive(InputObject)]
 pub struct ChangePinInput {
-    pub wallet_id: String,
     pub old_pin: String,
     pub new_pin: String,
 }
@@ -79,20 +77,21 @@ impl WalletMutation {
         // Get user by ID from the claims
         let user = wallet_service.get_user_by_id(&claims.sub).await?;
 
-        // Get the wallet
-        let wallet = wallet_service.get_wallet_by_id(&input.wallet_id).await?;
+        // Get the user's wallet
+        let wallet = wallet_service.get_wallet_by_user_email(&user.email).await?;
 
-        // Verify ownership
-        if wallet.user_email != user.email {
-            return Err(AppError::AuthorizationError(
-                "You do not have permission to transfer from this wallet".to_string(),
+        // Verify the PIN is correct before proceeding with transfer
+        let is_pin_valid = wallet_service.verify_pin(&wallet.id, &input.pin).await?;
+        if !is_pin_valid {
+            return Err(AppError::AuthenticationError(
+                "Invalid PIN. Transfer canceled for security reasons.".to_string(),
             ));
         }
 
         // Perform the transfer
         wallet_service
             .transfer(
-                &input.wallet_id,
+                &wallet.id,
                 &input.to_address,
                 input.amount,
                 &input.pin,
@@ -116,24 +115,25 @@ impl WalletMutation {
         // Get user by ID from the claims
         let user = wallet_service.get_user_by_id(&claims.sub).await?;
 
-        // Get the wallet
-        let wallet = wallet_service.get_wallet_by_id(&input.wallet_id).await?;
-
-        // Verify ownership
-        if wallet.user_email != user.email {
-            return Err(AppError::AuthorizationError(
-                "You do not have permission to change this wallet's PIN".to_string(),
+        // Get the user's wallet
+        let wallet = wallet_service.get_wallet_by_user_email(&user.email).await?;
+        
+        // Verify the old PIN is correct before allowing PIN change
+        let is_pin_valid = wallet_service.verify_pin(&wallet.id, &input.old_pin).await?;
+        if !is_pin_valid {
+            return Err(AppError::AuthenticationError(
+                "Current PIN is incorrect. PIN change canceled for security reasons.".to_string(),
             ));
         }
 
         // Change the PIN
-        wallet_service.change_wallet_pin(&input.wallet_id, &input.old_pin, &input.new_pin).await?;
+        wallet_service.change_wallet_pin(&wallet.id, &input.old_pin, &input.new_pin).await?;
         
         Ok(true)
     }
     
     // Verify wallet PIN (useful for client-side validation)
-    async fn verify_wallet_pin(&self, ctx: &Context<'_>, wallet_id: String, pin: String) -> Result<bool, AppError> {
+    async fn verify_wallet_pin(&self, ctx: &Context<'_>, pin: String) -> Result<bool, AppError> {
         // Get the claims from the context
         let claims = ctx.data::<Claims>().map_err(|_| {
             AppError::AuthenticationError("Authentication required to verify wallet PIN".to_string())
@@ -148,17 +148,10 @@ impl WalletMutation {
         // Get user by ID from the claims
         let user = wallet_service.get_user_by_id(&claims.sub).await?;
 
-        // Get the wallet
-        let wallet = wallet_service.get_wallet_by_id(&wallet_id).await?;
-
-        // Verify ownership
-        if wallet.user_email != user.email {
-            return Err(AppError::AuthorizationError(
-                "You do not have permission to access this wallet".to_string(),
-            ));
-        }
+        // Get the user's wallet
+        let wallet = wallet_service.get_wallet_by_user_email(&user.email).await?;
 
         // Verify the PIN
-        wallet_service.verify_pin(&wallet_id, &pin).await
+        wallet_service.verify_pin(&wallet.id, &pin).await
     }
 }

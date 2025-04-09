@@ -291,6 +291,7 @@ impl WalletServiceTrait for WalletService {
         
         // Decrypt private key using PIN
         let _private_key = self.encryption_service.decrypt_private_key(&encrypted_data, pin)?;
+        println!("Decrypted private key: {}", _private_key);
 
         // This is where you would use the private key to sign and broadcast the transaction
         debug!("Successfully decrypted private key for transaction signing");
