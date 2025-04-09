@@ -1,3 +1,5 @@
+// backend/micro-service/wallet/src/service.rs
+
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
 use app_models::user::User;
@@ -7,11 +9,14 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
+// Import encryption module and types
+use app_utils::crypto::{WalletEncryptionService, WalletEncryptedData};
+
 /// Trait defining the wallet service interface
 #[async_trait]
 pub trait WalletServiceTrait: Send + Sync {
-    /// Create a new wallet for a user
-    async fn create_wallet(&self, user_email: &str) -> AppResult<WalletInfo>;
+    /// Create a new wallet for a user with default PIN
+    async fn create_wallet(&self, user_email: &str, pin: &str) -> AppResult<WalletInfo>;
 
     /// Get a wallet by user email
     async fn get_wallet_by_user_email(&self, user_email: &str) -> AppResult<WalletInfo>;
@@ -28,17 +33,24 @@ pub trait WalletServiceTrait: Send + Sync {
         pin: &str,
     ) -> AppResult<String>;
 
-    /// Get wallet balance (for now returns a placeholder)
+    /// Get wallet balance
     async fn get_balance(&self, wallet_id: &str) -> AppResult<f64>;
     
-    /// Associate a wallet with a user by updating the user's wallet_id field
+    /// Associate a wallet with a user
     async fn associate_wallet_with_user(&self, user_id: &str, wallet_id: &str) -> AppResult<()>;
+    
+    /// Change wallet PIN
+    async fn change_wallet_pin(&self, wallet_id: &str, old_pin: &str, new_pin: &str) -> AppResult<()>;
+    
+    /// Verify wallet PIN
+    async fn verify_pin(&self, wallet_id: &str, pin: &str) -> AppResult<bool>;
 }
 
 /// Implementation of the wallet service
 pub struct WalletService {
     wallet_db: Option<Arc<DbService<'static, Wallet>>>,
     pub user_db: Option<Arc<DbService<'static, User>>>,
+    encryption_service: WalletEncryptionService,
 }
 
 impl WalletService {
@@ -47,6 +59,7 @@ impl WalletService {
         Self {
             wallet_db: None,
             user_db: None,
+            encryption_service: WalletEncryptionService::new(),
         }
     }
 
@@ -111,34 +124,25 @@ impl WalletService {
         Ok(None)
     }
 
-    /// Helper method to encrypt sensitive wallet data
-    /// This is a placeholder for now - in production implement proper encryption
-    fn encrypt_sensitive_data(&self, data: &str) -> String {
-        // TODO: In production, implement proper encryption
-        // For now, just return the plain data with a notice
-        format!("ENCRYPTED:{}", data)
-    }
-
-    /// Helper method to decrypt sensitive wallet data
-    /// This is a placeholder for now - in production implement proper decryption
-    fn decrypt_sensitive_data(&self, data: &str, _pin: &str) -> AppResult<String> {
-        // TODO: In production, implement proper decryption with PIN verification
-        // For now, just return the plain data if it has our fake encryption prefix
-        if data.starts_with("ENCRYPTED:") {
-            Ok(data.replace("ENCRYPTED:", ""))
-        } else {
-            Err(AppError::ValidationError(
-                "Invalid encrypted format".to_string(),
-            ))
+    /// Helper method to validate PIN format
+    fn validate_pin(pin: &str) -> AppResult<()> {
+        if pin.len() != 6 || !pin.chars().all(|c| c.is_digit(10)) {
+            return Err(AppError::ValidationError(
+                "PIN must be a 6-digit number".to_string(),
+            ));
         }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl WalletServiceTrait for WalletService {
-    async fn create_wallet(&self, user_email: &str) -> AppResult<WalletInfo> {
+    async fn create_wallet(&self, user_email: &str, pin: &str) -> AppResult<WalletInfo> {
+        // Validate PIN format
+        Self::validate_pin(pin)?;
+        
         // Validate user exists
-        self.validate_user_exists(user_email).await?;
+        let user = self.validate_user_exists(user_email).await?;
 
         // Check if wallet already exists
         if let Some(existing_wallet) = self.check_wallet_exists(user_email).await? {
@@ -150,15 +154,19 @@ impl WalletServiceTrait for WalletService {
 
         // Extract wallet data
         let address = eth_wallet.address().to_string();
-        let private_key = self.encrypt_sensitive_data(&eth_wallet.private_key_hex());
-        let mnemonic = self.encrypt_sensitive_data(&eth_wallet.mnemonic_phrase());
+        let private_key = eth_wallet.private_key_hex();
+
+        // Encrypt private key with PIN and system encryption
+        let encrypted_data = self.encryption_service.encrypt_private_key(&private_key, pin)?;
+        
+        // Convert encrypted data to storage format
+        let private_key_storage = encrypted_data.to_storage_string();
 
         // Create new wallet record
         let wallet = Wallet::new(
             user_email.to_string(),
             address.clone(),
-            private_key,
-            mnemonic,
+            private_key_storage,
         );
 
         // Store wallet if database is available
@@ -166,7 +174,20 @@ impl WalletServiceTrait for WalletService {
             info!("Creating new wallet for user: {}", user_email);
 
             match wallet_db.create_record(wallet.clone()).await {
-                Ok(Some(stored)) => Ok(WalletInfo::from(stored)),
+                Ok(Some(stored)) => {
+                    // Associate wallet with user
+                    if let Some(user_db) = &self.user_db {
+                        let wallet_id = stored.id.id.to_string();
+                        let mut updated_user = user.clone();
+                        updated_user.wallet_id = Some(wallet_id.clone());
+                        updated_user.updated_at = chrono::Utc::now();
+                        
+                        // Update user record with wallet reference
+                        let _ = user_db.update_record(&user.id.id.to_string(), updated_user).await;
+                    }
+                    
+                    Ok(WalletInfo::from(stored))
+                },
                 Ok(None) => {
                     error!("Database did not return stored wallet");
                     Ok(WalletInfo::from(wallet)) // Use the original wallet as fallback
@@ -221,12 +242,8 @@ impl WalletServiceTrait for WalletService {
         amount: f64,
         pin: &str,
     ) -> AppResult<String> {
-        // Validate PIN format (in production, this would be more sophisticated)
-        if pin.len() != 6 || !pin.chars().all(|c| c.is_digit(10)) {
-            return Err(AppError::ValidationError(
-                "PIN must be 6 digits".to_string(),
-            ));
-        }
+        // Validate PIN format
+        Self::validate_pin(pin)?;
 
         // Validate amount
         if amount <= 0.0 {
@@ -263,11 +280,22 @@ impl WalletServiceTrait for WalletService {
             return Err(AppError::ValidationError("Insufficient funds".to_string()));
         }
 
+        // Parse and decrypt the encrypted private key
+        let encrypted_data = match WalletEncryptedData::from_storage_string(&wallet.private_key) {
+            Ok(data) => data,
+            Err(_) => {
+                // If not in the new format, try legacy format (backward compatibility)
+                return Err(AppError::ValidationError("Wallet format not supported. Please recreate your wallet.".to_string()));
+            }
+        };
+        
         // Decrypt private key using PIN
-        let _private_key = self.decrypt_sensitive_data(&wallet.private_key, pin)?;
+        let _private_key = self.encryption_service.decrypt_private_key(&encrypted_data, pin)?;
 
         // This is where you would use the private key to sign and broadcast the transaction
-        // For now, we'll just return a placeholder transaction hash
+        debug!("Successfully decrypted private key for transaction signing");
+        
+        // For now, just return a placeholder transaction hash
         let transaction_hash = format!("0x{}", hex::encode(uuid::Uuid::new_v4().as_bytes()));
 
         info!(
@@ -343,6 +371,86 @@ impl WalletServiceTrait for WalletService {
             )))
         }
     }
+    
+    async fn verify_pin(&self, wallet_id: &str, pin: &str) -> AppResult<bool> {
+        // Validate PIN format
+        Self::validate_pin(pin)?;
+        
+        // Get wallet
+        if let Some(wallet_db) = &self.wallet_db {
+            let wallet = wallet_db
+                .get_record_by_id(wallet_id)
+                .await
+                .map_err(|e| {
+                    error!("Database error when fetching wallet for PIN verification: {}", e);
+                    AppError::DatabaseError(anyhow::anyhow!(e))
+                })?
+                .ok_or_else(|| {
+                    AppError::NotFoundError(format!("Wallet with ID '{}' not found", wallet_id))
+                })?;
+                
+            // Parse the encrypted data
+            let encrypted_data = WalletEncryptedData::from_storage_string(&wallet.private_key)
+                .map_err(|_| AppError::ValidationError("Invalid wallet format".to_string()))?;
+            
+            // Try to decrypt with PIN - we don't need the result, just whether it succeeds
+            match self.encryption_service.decrypt_private_key(&encrypted_data, pin) {
+                Ok(_) => Ok(true),
+                Err(_) => Ok(false)
+            }
+        } else {
+            Err(AppError::ServerError(anyhow::anyhow!(
+                "Wallet database not available"
+            )))
+        }
+    }
+    
+    async fn change_wallet_pin(&self, wallet_id: &str, old_pin: &str, new_pin: &str) -> AppResult<()> {
+        // Validate both PINs
+        Self::validate_pin(old_pin)?;
+        Self::validate_pin(new_pin)?;
+        
+        // Get wallet
+        if let Some(wallet_db) = &self.wallet_db {
+            let wallet = wallet_db
+                .get_record_by_id(wallet_id)
+                .await
+                .map_err(|e| {
+                    error!("Database error when fetching wallet for PIN change: {}", e);
+                    AppError::DatabaseError(anyhow::anyhow!(e))
+                })?
+                .ok_or_else(|| {
+                    AppError::NotFoundError(format!("Wallet with ID '{}' not found", wallet_id))
+                })?;
+            
+            // Decrypt private key with old PIN
+            let encrypted_private_key_data = WalletEncryptedData::from_storage_string(&wallet.private_key)
+                .map_err(|_| AppError::ValidationError("Invalid wallet format".to_string()))?;
+                
+            let private_key = self.encryption_service.decrypt_private_key(&encrypted_private_key_data, old_pin)?;
+            
+            // Re-encrypt with new PIN
+            let new_encrypted_private_key = self.encryption_service.encrypt_private_key(&private_key, new_pin)?;
+            
+            // Update wallet record
+            let mut updated_wallet = wallet.clone();
+            updated_wallet.private_key = new_encrypted_private_key.to_storage_string();
+            updated_wallet.updated_at = chrono::Utc::now();
+            
+            // Save updated wallet
+            wallet_db.update_record(wallet_id, updated_wallet).await.map_err(|e| {
+                error!("Failed to update wallet with new PIN: {}", e);
+                AppError::DatabaseError(anyhow::anyhow!(e))
+            })?;
+            
+            info!("Successfully changed PIN for wallet {}", wallet_id);
+            Ok(())
+        } else {
+            Err(AppError::ServerError(anyhow::anyhow!(
+                "Wallet database not available"
+            )))
+        }
+    }
 }
 
 // For testing purposes
@@ -373,7 +481,15 @@ pub mod mocks {
 
     #[async_trait]
     impl WalletServiceTrait for MockWalletService {
-        async fn create_wallet(&self, user_email: &str) -> AppResult<WalletInfo> {
+
+        async fn create_wallet(&self, user_email: &str, pin: &str) -> AppResult<WalletInfo> {
+            // Validate PIN format
+            if pin.len() != 6 || !pin.chars().all(|c| c.is_digit(10)) {
+                return Err(AppError::ValidationError(
+                    "PIN must be a 6-digit number".to_string(),
+                ));
+            }
+            
             // Check if user exists
             let users = self.users.lock().unwrap();
             if !users.iter().any(|u| u.email == user_email) {
@@ -393,15 +509,13 @@ pub mod mocks {
 
             // Create new wallet
             let address = format!("0x{}", hex::encode(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
-            let private_key = "ENCRYPTED:mock_private_key".to_string();
-            let mnemonic = "ENCRYPTED:mock mnemonic phrase".to_string();
+            let private_key = format!("ENCRYPTED:MOCKPIN:{}:mock_private_key", pin);
 
             let wallet = Wallet {
                 id: Wallet::generate_id(),
                 user_email: user_email.to_string(),
                 address: address.clone(),
                 private_key,
-                mnemonic,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
@@ -486,6 +600,64 @@ pub mod mocks {
                 Err(AppError::NotFoundError(format!(
                     "User with ID '{}' not found",
                     user_id
+                )))
+            }
+        }
+        
+        async fn verify_pin(&self, wallet_id: &str, pin: &str) -> AppResult<bool> {
+            // Validate PIN format
+            if pin.len() != 6 || !pin.chars().all(|c| c.is_digit(10)) {
+                return Err(AppError::ValidationError(
+                    "PIN must be a 6-digit number".to_string(),
+                ));
+            }
+            
+            // Get wallet
+            let wallets = self.wallets.lock().unwrap();
+            if let Some(wallet) = wallets.iter().find(|w| w.id.id.to_string() == wallet_id) {
+                // In mock, we'll just check if the PIN appears in the encrypted string
+                if wallet.private_key.contains(&format!(":{}:", pin)) {
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            } else {
+                Err(AppError::NotFoundError(format!(
+                    "Wallet with ID '{}' not found",
+                    wallet_id
+                )))
+            }
+        }
+        
+        async fn change_wallet_pin(&self, wallet_id: &str, old_pin: &str, new_pin: &str) -> AppResult<()> {
+            // Validate PIN format
+            if old_pin.len() != 6 || !old_pin.chars().all(|c| c.is_digit(10)) {
+                return Err(AppError::ValidationError(
+                    "Old PIN must be a 6-digit number".to_string(),
+                ));
+            }
+            
+            if new_pin.len() != 6 || !new_pin.chars().all(|c| c.is_digit(10)) {
+                return Err(AppError::ValidationError(
+                    "New PIN must be a 6-digit number".to_string(),
+                ));
+            }
+            
+            // Get wallet
+            let mut wallets = self.wallets.lock().unwrap();
+            if let Some(wallet) = wallets.iter_mut().find(|w| w.id.id.to_string() == wallet_id) {
+                // In mock, change PIN in encrypted string
+                if wallet.private_key.contains(&format!(":{}:", old_pin)) {
+                    wallet.private_key = wallet.private_key.replace(&format!(":{}:", old_pin), &format!(":{}:", new_pin));
+                    wallet.updated_at = Utc::now();
+                    Ok(())
+                } else {
+                    Err(AppError::ValidationError("Invalid old PIN".to_string()))
+                }
+            } else {
+                Err(AppError::NotFoundError(format!(
+                    "Wallet with ID '{}' not found",
+                    wallet_id
                 )))
             }
         }
