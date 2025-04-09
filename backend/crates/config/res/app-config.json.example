@@ -2,7 +2,7 @@
     "environment": "development",
     "database": {
         "user_db": {
-            "endpoint": "ws://0.0.0.0:8000",
+            "endpoint": "ws://localhost:4000",
             "username": "root",
             "password": "root",
             "namespace": "user_surrealdb",
@@ -13,7 +13,7 @@
             }
         },
         "wallet_db": {
-            "endpoint": "ws://0.0.0.0:8001",
+            "endpoint": "ws://localhost:4001",
             "username": "root",
             "password": "root",
             "namespace": "wallet_surrealdb",
@@ -26,7 +26,7 @@
     },
     "server": {
         "host": "0.0.0.0",
-        "port": 4000,
+        "port": 5000,
         "timeouts": {
             "read": 20000,
             "write": 20000,

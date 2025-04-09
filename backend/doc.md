@@ -6,7 +6,7 @@ mutation {
     name: "LayNath242",
     username: "laynath242",
     email: "laynath242@example.com",
-    password: "securepassword123"
+    password: "@Asecurepassword123"
   }) {
     token
     user {

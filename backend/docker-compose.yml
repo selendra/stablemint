@@ -1,16 +1,27 @@
 services:
-  # surrealdb:
-  #   image: surrealdb/surrealdb:latest
-  #   container_name: surrealdb
-  #   ports:
-  #     - "8000:8000"
-  #     - "8001:8001"
-  #   environment:
-  #     - SURREALDB_AUTH=root:root
-  #     - SURREALDB_DB=selendraDB
-  #   restart: unless-stopped
-  #   networks:
-  #     - app-network
+  surrealdb1:
+    image: surrealdb/surrealdb:latest
+    container_name: surrealdb1
+    command: start --user root --pass root memory
+    ports:
+      - "4000:8000"
+    volumes:
+      - ./surrealdb1-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  surrealdb2:
+    image: surrealdb/surrealdb:latest
+    container_name: surrealdb2
+    command: start --user root --pass root memory
+    ports:
+      - "4001:8000"
+    volumes:
+      - ./surrealdb2-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
 
   redis:
     image: redis:latest
