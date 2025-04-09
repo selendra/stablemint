@@ -137,7 +137,6 @@ async fn test_register_login_flow() -> AppResult<()> {
                         name
                         username
                         email
-                        address
                     }
                 }
             }
