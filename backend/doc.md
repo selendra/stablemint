@@ -31,8 +31,7 @@ Most operations require authentication via a JWT token. The token is obtained du
 
 ```
 {
- "Authorization":"Bearer<your_token"
-
+"Authorization":"Bearer<your_token
 }
 ```
 
