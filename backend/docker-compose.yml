@@ -45,9 +45,9 @@ services:
       - "8200:8200"
     restart: unless-stopped
     volumes:
-      - ./.local/vault/config:/vault/config
-      - ./.local/vault/data:/vault/data
-      - ./.local/vault/logs:/vault/logs
+      - ./vault/config:/vault/config
+      - ./vault/data:/vault/data
+      - ./vault/logs:/vault/logs
     cap_add:
       - IPC_LOCK
     environment:
