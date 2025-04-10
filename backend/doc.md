@@ -30,7 +30,9 @@ Each service exposes a GraphQL API endpoint and requires JWT authentication for 
 Most operations require authentication via a JWT token. The token is obtained during registration or login and should be included in the Authorization header of subsequent requests.
 
 ```
-{"Authorization": "Bearer <your_token>" 
+{
+ "Authorization":"Bearer<your_token"
+
 }
 ```
 
