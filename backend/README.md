@@ -9,7 +9,7 @@
 ## Secure Implementation Checklist
 Before deploying to production, ensure:
 
-- [ ] Private keys and mnemonics are encrypted at rest
+- [x] Private keys are encrypted
 - [ ] A secure key management solution is in place
 - [ ] Database connections use TLS with strong authentication
 - [ ] Proper access controls are implemented
