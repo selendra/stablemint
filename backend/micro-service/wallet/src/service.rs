@@ -1,21 +1,20 @@
-// backend/micro-service/wallet/src/service.rs
-
 use app_database::service::DbService;
 use app_error::{AppError, AppResult};
 use app_models::user::User;
 use app_models::wallet::{Wallet, WalletInfo};
 use app_utils::generate::EthereumWallet;
+use app_utils::crypto::{WalletEncryptionService, WalletEncryptedData};
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
-// Import encryption module and types
-use app_utils::crypto::{WalletEncryptionService, WalletEncryptedData};
+// Import the Vault client
+use app_utils::vault::VaultClient;
 
 /// Trait defining the wallet service interface
 #[async_trait]
 pub trait WalletServiceTrait: Send + Sync {
-    /// Create a new wallet for a user with default PIN
+    /// Create a new wallet for a user with PIN
     async fn create_wallet(&self, user_email: &str, pin: &str) -> AppResult<WalletInfo>;
 
     /// Get a wallet by user email
@@ -50,17 +49,32 @@ pub trait WalletServiceTrait: Send + Sync {
 pub struct WalletService {
     wallet_db: Option<Arc<DbService<'static, Wallet>>>,
     pub user_db: Option<Arc<DbService<'static, User>>>,
-    encryption_service: WalletEncryptionService,
+    encryption_service: Arc<WalletEncryptionService>,
+    vault_client: Arc<VaultClient>,
 }
 
 impl WalletService {
     /// Create a new wallet service
-    pub fn new() -> Self {
+    pub fn new(vault_url: &str, _vault_username: &str, _vault_password: &str) -> Self {
+        let vault_client = Arc::new(VaultClient::new(vault_url));
+        
         Self {
             wallet_db: None,
             user_db: None,
-            encryption_service: WalletEncryptionService::new(),
+            encryption_service: Arc::new(WalletEncryptionService::new(Arc::clone(&vault_client))),
+            vault_client,
         }
+    }
+
+    /// Initialize the wallet service - establishes connection to Vault
+    pub async fn initialize(&self) -> AppResult<()> {
+        // Login to Vault
+        self.vault_client.login("wallet-service", "service-password").await?;
+        
+        // Initialize the encryption service
+        self.encryption_service.initialize().await?;
+        
+        Ok(())
     }
 
     /// Add a wallet database service
@@ -157,7 +171,7 @@ impl WalletServiceTrait for WalletService {
         let private_key = eth_wallet.private_key_hex();
 
         // Encrypt private key with PIN and system encryption
-        let encrypted_data = self.encryption_service.encrypt_private_key(&private_key, pin)?;
+        let encrypted_data = self.encryption_service.encrypt_private_key(&private_key, pin).await?;
         
         // Convert encrypted data to storage format
         let private_key_storage = encrypted_data.to_storage_string();
@@ -290,9 +304,8 @@ impl WalletServiceTrait for WalletService {
         };
         
         // Decrypt private key using PIN
-        let _private_key = self.encryption_service.decrypt_private_key(&encrypted_data, pin)?;
-        println!("Decrypted private key: {}", _private_key);
-
+        let _private_key = self.encryption_service.decrypt_private_key(&encrypted_data, pin).await?;
+        
         // This is where you would use the private key to sign and broadcast the transaction
         debug!("Successfully decrypted private key for transaction signing");
         
@@ -395,7 +408,7 @@ impl WalletServiceTrait for WalletService {
                 .map_err(|_| AppError::ValidationError("Invalid wallet format".to_string()))?;
             
             // Try to decrypt with PIN - we don't need the result, just whether it succeeds
-            match self.encryption_service.decrypt_private_key(&encrypted_data, pin) {
+            match self.encryption_service.decrypt_private_key(&encrypted_data, pin).await {
                 Ok(_) => Ok(true),
                 Err(_) => Ok(false)
             }
@@ -428,10 +441,10 @@ impl WalletServiceTrait for WalletService {
             let encrypted_private_key_data = WalletEncryptedData::from_storage_string(&wallet.private_key)
                 .map_err(|_| AppError::ValidationError("Invalid wallet format".to_string()))?;
                 
-            let private_key = self.encryption_service.decrypt_private_key(&encrypted_private_key_data, old_pin)?;
+            let private_key = self.encryption_service.decrypt_private_key(&encrypted_private_key_data, old_pin).await?;
             
             // Re-encrypt with new PIN
-            let new_encrypted_private_key = self.encryption_service.encrypt_private_key(&private_key, new_pin)?;
+            let new_encrypted_private_key = self.encryption_service.encrypt_private_key(&private_key, new_pin).await?;
             
             // Update wallet record
             let mut updated_wallet = wallet.clone();
@@ -453,6 +466,7 @@ impl WalletServiceTrait for WalletService {
         }
     }
 }
+
 
 // For testing purposes
 #[cfg(test)]

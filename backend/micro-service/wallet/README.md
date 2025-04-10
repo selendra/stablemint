@@ -1,59 +1,83 @@
-## Multi-Layer Wallet Encryption Implementation
-I've implemented a comprehensive wallet security system that protects private keys using multiple encryption layers as you requested. Here's how it works:
+# Security Guide for Wallet Data
 
-### Key Security Concepts
-The implementation uses a "tiered encryption" approach (also known as envelope encryption):
+## Key Management Architecture
 
-#### 1. User Layer - PIN Protection
+This wallet service uses a multi-tier key management system powered by HashiCorp Vault:
 
-User provides a 6-digit PIN to access their wallet
-PIN is used to derive an encryption key via PBKDF2 with a unique salt
-This ensures only someone with the PIN can access the private key
+### 1. User Layer: PIN Protection
+- Each wallet is protected by a 6-digit PIN known only to the user
+- PIN is used to derive an encryption key via PBKDF2 with a unique salt
+- PIN is never stored, only the user knows it
 
+### 2. Application Layer: Data Encryption Keys (DEK)
+- Each wallet gets a unique Data Encryption Key (DEK)
+- The PIN-encrypted data is further encrypted with this DEK
+- DEKs are encrypted by the master key
 
-#### 2. Application Layer - Data Encryption Key (DEK)
-
-Each wallet gets a unique Data Encryption Key
-The PIN-encrypted data is further encrypted with this DEK
-DEKs are tracked and cached for performance
-
-
-#### 3. System Layer - Master Key
-
-A master key encrypts all the DEKs
-The master key is managed separately (ideally in a KMS or HSM)
-This provides an additional security layer
-
-
+### 3. System Layer: Master Key in Vault
+- The master key is stored securely in HashiCorp Vault, not in application memory
+- Vault provides access control, auditing, and secure storage
+- Access to the master key requires authentication and authorization
 
 ## Security Benefits
 
-- Defense in Depth: Compromising any single layer isn't enough to get the private key
-- PIN Security: The PIN never leaves the user's control, and is never stored
-- Key Isolation: The master key never directly encrypts sensitive data
-- Key Rotation: Master keys can be rotated without re-encrypting all private keys
-- Performance: DEK caching improves performance for frequent operations
+1. **Defense in Depth**: Multiple encryption layers protect against various threat vectors
+2. **Secure Key Storage**: Master keys are stored in Vault, a dedicated secrets management system
+3. **Audit Trail**: All key access is logged for security analysis
+4. **Access Control**: Fine-grained policies control which services can access encryption keys
+5. **Key Rotation**: Master keys can be rotated without re-encrypting all wallet data
+6. **Compliance**: Meets industry standards for cryptographic key management
 
-## Implementation Details
+## Secure Implementation Checklist
+Before deploying to production, ensure:
 
-#### 1. The WalletEncryptionService handles:
+- [x] Private keys are encrypted with multiple layers (PIN, DEK, Master Key)
+- [x] A secure key management solution is in place (HashiCorp Vault)
+- [ ] Database connections use TLS with strong authentication
+- [ ] Proper access controls are implemented
+- [x] All sensitive operations are audited
+- [ ] Rate limiting is applied to prevent abuse
+- [ ] Regular security reviews are scheduled
 
-- Generating encryption keys
-- Encrypting wallet data with multiple layers
-- Decrypting wallet data when authorized by PIN
-- Managing cryptographic material securely
+## Vault Configuration
 
+The system uses the following Vault configuration:
 
-####  2. The WalletService provides:
+- **Secrets Engine**: KV Version 2
+- **Authentication**: UserPass method for service authentication
+- **Policies**: Limited access to only required paths
+- **Data Structure**:
+  - Master keys: `kv/crypto/master_keys/{key_id}`
+  - Wallet encryption data stored in database
 
-- Creating wallets with PIN protection
-- Transferring funds that requires PIN verification
-- Changing PINs while maintaining the same underlying keys
-- PIN verification without exposing the private key
+## Emergency Procedures
 
+In case of a security incident:
 
-####  3. The GraphQL schema exposes user-friendly operations:
+1. Revoke access to the compromised Vault tokens
+2. Rotate the affected keys
+3. Notify the security team immediately
+4. Preserve evidence for investigation
+5. Follow the incident response plan
 
-- Creating wallets with secure PINs
-- Making transfers with PIN authorization
-- Changing/verifying PINs
+## Testing Security Measures
+
+Use these approaches to validate security measures:
+
+1. Conduct penetration testing of the wallet service
+2. Perform regular code security reviews focusing on the cryptographic implementation
+3. Verify key access procedures with Vault audit logs
+4. Use automated scanning tools for vulnerability detection
+5. Verify encryption implementations with security experts
+
+## Production Hardening
+
+For production deployment:
+
+1. Enable TLS for Vault communication
+2. Configure a robust storage backend (Consul or cloud provider)
+3. Implement auto-unseal with cloud KMS
+4. Set up high availability for Vault
+5. Use more robust authentication (such as TLS certificates)
+6. Implement proper network security controls
+7. Configure regular key rotation

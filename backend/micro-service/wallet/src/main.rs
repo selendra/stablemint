@@ -100,12 +100,28 @@ async fn main() -> Result<(), AppError> {
         config.security.jwt.expiry_hours,
     ));
 
-    // Create wallet service
-    let wallet_service = Arc::new(
-        WalletService::new()
-            .with_wallet_db(wallet_db)
-            .with_user_db(user_db),
-    );
+    // Vault configuration
+    let vault_url = "http://0.0.0.0:8200"; // Using local Vault instance
+    let vault_username = "wallet-service";
+    let vault_password = "vault-password"; // In production, fetch from secure config
+
+    // Create wallet service with Vault integration
+    let wallet_service = WalletService::new(vault_url, vault_username, vault_password)
+        .with_wallet_db(wallet_db)
+        .with_user_db(user_db);
+    
+    // Initialize Vault connection
+    match wallet_service.initialize().await {
+        Ok(_) => info!("Successfully connected to Vault and initialized encryption service"),
+        Err(e) => {
+            error!("Failed to initialize Vault connection: {}", e);
+            return Err(AppError::ConfigError(anyhow::anyhow!(
+                "Vault initialization failed: {}", e
+            )));
+        }
+    }
+    
+    let wallet_service = Arc::new(wallet_service);
 
     // Create GraphQL schema
     let schema = create_schema();

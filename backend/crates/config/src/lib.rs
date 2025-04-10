@@ -1,7 +1,6 @@
 use app_error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
-// Include the config loader module
 mod config_loader;
 pub use config_loader::*;
 
