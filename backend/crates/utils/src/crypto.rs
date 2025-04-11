@@ -9,9 +9,6 @@ use uuid::Uuid;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-// Import the HCP Secrets client
-use crate::secrets::SecretsClient;
-
 // Constants for encryption
 const PBKDF2_ITERATIONS: u32 = 10000; // High number for security
 const SALT_LENGTH: usize = 16;
@@ -46,75 +43,20 @@ impl DekCache {
 pub struct WalletEncryptionService {
     // Fields for master key identification
     master_key_id: String,
-    // HCP Secrets client for secure key storage
-    secrets_client: Arc<SecretsClient>,
     // In-memory cache of data encryption keys
     dek_cache: Arc<DekCache>,
+    //
+    master_key: Arc<[u8]>,
 }
 
 impl WalletEncryptionService {
     /// Creates a new WalletEncryptionService instance with HCP Secrets
-    pub fn new(secrets_client: Arc<SecretsClient>) -> Self {
-        // Generate a master key ID
-        let master_key_id = format!("master-{}", Uuid::new_v4());
-        
+    pub fn new(master_key_id: &str, master_key: &[u8] ) -> Self {
         Self {
-            master_key_id,
-            secrets_client,
+            master_key_id: master_key_id.to_string(),
             dek_cache: Arc::new(DekCache::new()),
+            master_key: Arc::from(master_key.to_vec())
         }
-    }
-
-    /// Initialize the service by ensuring master key exists in HCP Secrets
-    pub async fn initialize(&self) -> AppResult<()> {
-        // Make sure the secrets client is authenticated
-        if !self.secrets_client.is_authenticated().await {
-            self.secrets_client.initialize().await?;
-        }
-        
-        // Format the secret name to be compliant with HCP Secrets naming requirements
-        let safe_key_id = self.master_key_id.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-        let secret_name = format!("wallet_master_key_{}", safe_key_id);
-        
-        // Check if master key already exists in HCP
-        match self.secrets_client.get_secret(&secret_name).await {
-            Ok(_) => {
-                // Master key exists, we're good
-                tracing::info!("Using existing master key from HCP Secrets: {}", self.master_key_id);
-                Ok(())
-            },
-            Err(AppError::NotFoundError(_)) => {
-                // Master key doesn't exist, generate and store it
-                let new_key = Self::generate_random_bytes(KEY_LENGTH);
-                let key_hex = hex::encode(&new_key);
-                
-                // Store the key in HCP
-                self.secrets_client.store_secret(&secret_name, &key_hex).await?;
-                tracing::info!("Generated and stored new master key in HCP Secrets: {}", self.master_key_id);
-                Ok(())
-            },
-            Err(e) => Err(e),
-        }
-    }
-    
-    /// Get the master key identifier
-    pub fn get_master_key_id(&self) -> &str {
-        &self.master_key_id
-    }
-
-    /// Fetch master key from HCP Secrets
-    async fn get_master_key(&self) -> AppResult<Vec<u8>> {
-        // Format the secret name to be compliant with HCP Secrets naming requirements
-        // Only use letters, numbers, and underscores - replace dashes and special chars with underscores
-        let safe_key_id = self.master_key_id.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-        let secret_name = format!("wallet_master_key_{}", safe_key_id);
-        
-        // Get the key from HCP Secrets
-        let key_hex = self.secrets_client.get_secret(&secret_name).await?;
-        
-        hex::decode(key_hex).map_err(|e| {
-            AppError::CryptoError(format!("Invalid master key format in HCP Secrets: {}", e))
-        })
     }
 
     /// Encrypt a private key with user PIN and then with DEK and master key
@@ -134,10 +76,8 @@ impl WalletEncryptionService {
         let dek_iv = Self::generate_random_bytes(IV_LENGTH);
         let dek_encrypted = Self::aes_gcm_encrypt(&pin_encrypted, &dek, &dek_iv)?;
         
-        // Step 5: Encrypt the DEK with the master key from HCP
-        let master_key = self.get_master_key().await?;
         let master_iv = Self::generate_random_bytes(IV_LENGTH);
-        let encrypted_dek = Self::aes_gcm_encrypt(&dek, &master_key, &master_iv)?;
+        let encrypted_dek = Self::aes_gcm_encrypt(&dek, &self.master_key, &master_iv)?;
         
         // Cache the DEK for future use
         let dek_id = Uuid::new_v4().to_string();
@@ -172,13 +112,13 @@ impl WalletEncryptionService {
             Some(dek) => dek,
             None => {
                 // If not in cache, decrypt it using the master key
-                let master_key = self.get_master_key().await?;
+    
                 let encrypted_dek = hex::decode(&encrypted_data.encrypted_dek)
                     .map_err(|_| AppError::ValidationError("Invalid DEK format".to_string()))?;
                 let master_iv = hex::decode(&encrypted_data.master_iv)
                     .map_err(|_| AppError::ValidationError("Invalid master IV format".to_string()))?;
                 
-                let dek = Self::aes_gcm_decrypt(&encrypted_dek, &master_key, &master_iv)?;
+                let dek = Self::aes_gcm_decrypt(&encrypted_dek, &self.master_key, &master_iv)?;
                 
                 // Add to cache for future use
                 self.dek_cache.set(encrypted_data.dek_id.clone(), dek.clone()).await;

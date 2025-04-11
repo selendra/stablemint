@@ -141,6 +141,7 @@ pub struct RedisConfig {
 // New struct for HCP Secrets configuration
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HcpSecretsConfig {
+    pub master_key_name: String,
     pub base_url: String,
     pub org_id: String,
     pub project_id: String,
@@ -429,6 +430,7 @@ impl Default for AppConfig {
                 prefix: Some("app".to_string()),
             }),
             hcp_secrets: Some(HcpSecretsConfig {
+                master_key_name: "encryption_service".to_string(),
                 base_url: "https://api.cloud.hashicorp.com".to_string(),
                 org_id: "".to_string(),
                 project_id: "".to_string(),

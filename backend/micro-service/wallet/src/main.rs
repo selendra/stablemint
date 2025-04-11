@@ -6,7 +6,6 @@ use app_database::{
 use app_error::AppError;
 use app_middleware::{JwtService, limits::rate_limiter::create_redis_api_rate_limiter};
 use app_models::{user::User, wallet::Wallet};
-use app_utils::secrets::SecretsClient;
 use app_utils::crypto::WalletEncryptionService;
 use micro_wallet::{routes, schema::create_schema, service::WalletService};
 use std::{collections::HashMap, sync::Arc};
@@ -102,48 +101,14 @@ async fn main() -> Result<(), AppError> {
         config.security.jwt.expiry_hours,
     ));
 
-    // Get HCP Secrets configuration
-    let hcp_secrets = config.hcp_secrets.clone().ok_or_else(|| {
-        AppError::ConfigError(anyhow::anyhow!(
-            "HCP Secrets configuration is required but not provided"
-        ))
-    })?;
+    // Check for master key ID in environment variables or use a default
+    // Update this with your preferred config structure for master key ID
+    // This is a placeholder - modify as needed for your configuration approach
+    let master_key_id = config.hcp_secrets.as_ref().unwrap().master_key_name.clone();
+    let master_key = "supersecretkey".as_bytes();
 
-    // Create HCP Secrets client
-    info!("Initializing HCP Secrets client...");
-    let secrets_client = Arc::new(SecretsClient::new(
-        &hcp_secrets.base_url,
-        &hcp_secrets.org_id,
-        &hcp_secrets.project_id,
-        &hcp_secrets.app_name,
-        &hcp_secrets.client_id,
-        &hcp_secrets.client_secret,
-    ));
-
-    // Initialize HCP Secrets client
-    match secrets_client.initialize().await {
-        Ok(_) => info!("Successfully authenticated with HCP Secrets"),
-        Err(e) => {
-            error!("Failed to authenticate with HCP Secrets: {}", e);
-            return Err(AppError::ConfigError(anyhow::anyhow!(
-                "HCP Secrets authentication failed: {}", e
-            )));
-        }
-    }
-
-    // Create encryption service
-    let encryption_service = Arc::new(WalletEncryptionService::new(Arc::clone(&secrets_client)));
-
-    // Initialize encryption service
-    match encryption_service.initialize().await {
-        Ok(_) => info!("Successfully initialized encryption service"),
-        Err(e) => {
-            error!("Failed to initialize encryption service: {}", e);
-            return Err(AppError::ConfigError(anyhow::anyhow!(
-                "Encryption service initialization failed: {}", e
-            )));
-        }
-    }
+    // Create encryption service with the specified master key ID
+    let encryption_service = Arc::new(WalletEncryptionService::new(&master_key_id, master_key));
 
     // Create wallet service
     let wallet_service = WalletService::new(encryption_service)

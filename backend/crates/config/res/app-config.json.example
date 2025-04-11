@@ -95,6 +95,7 @@
         "prefix": "app"
     },
     "hcp_secrets": {
+        "master_key_name": "encryption_service",
         "base_url": "https://api.cloud.hashicorp.com",
         "org_id": "your-organization-id",
         "project_id": "your-project-id",
