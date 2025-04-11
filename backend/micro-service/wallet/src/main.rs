@@ -6,6 +6,8 @@ use app_database::{
 use app_error::AppError;
 use app_middleware::{JwtService, limits::rate_limiter::create_redis_api_rate_limiter};
 use app_models::{user::User, wallet::Wallet};
+use app_utils::secrets::SecretsClient;
+use app_utils::crypto::WalletEncryptionService;
 use micro_wallet::{routes, schema::create_schema, service::WalletService};
 use std::{collections::HashMap, sync::Arc};
 use tokio::net::TcpListener;
@@ -100,26 +102,53 @@ async fn main() -> Result<(), AppError> {
         config.security.jwt.expiry_hours,
     ));
 
-    // Vault configuration
-    let vault_url = "http://0.0.0.0:8200"; // Using local Vault instance
-    let vault_username = "wallet-service";
-    let vault_password = "vault-password"; // In production, fetch from secure config
+    // Get HCP Secrets configuration
+    let hcp_secrets = config.hcp_secrets.clone().ok_or_else(|| {
+        AppError::ConfigError(anyhow::anyhow!(
+            "HCP Secrets configuration is required but not provided"
+        ))
+    })?;
 
-    // Create wallet service with Vault integration
-    let wallet_service = WalletService::new(vault_url, vault_username, vault_password)
-        .with_wallet_db(wallet_db)
-        .with_user_db(user_db);
-    
-    // Initialize Vault connection
-    match wallet_service.initialize().await {
-        Ok(_) => info!("Successfully connected to Vault and initialized encryption service"),
+    // Create HCP Secrets client
+    info!("Initializing HCP Secrets client...");
+    let secrets_client = Arc::new(SecretsClient::new(
+        &hcp_secrets.base_url,
+        &hcp_secrets.org_id,
+        &hcp_secrets.project_id,
+        &hcp_secrets.app_name,
+        &hcp_secrets.client_id,
+        &hcp_secrets.client_secret,
+    ));
+
+    // Initialize HCP Secrets client
+    match secrets_client.initialize().await {
+        Ok(_) => info!("Successfully authenticated with HCP Secrets"),
         Err(e) => {
-            error!("Failed to initialize Vault connection: {}", e);
+            error!("Failed to authenticate with HCP Secrets: {}", e);
             return Err(AppError::ConfigError(anyhow::anyhow!(
-                "Vault initialization failed: {}", e
+                "HCP Secrets authentication failed: {}", e
             )));
         }
     }
+
+    // Create encryption service
+    let encryption_service = Arc::new(WalletEncryptionService::new(Arc::clone(&secrets_client)));
+
+    // Initialize encryption service
+    match encryption_service.initialize().await {
+        Ok(_) => info!("Successfully initialized encryption service"),
+        Err(e) => {
+            error!("Failed to initialize encryption service: {}", e);
+            return Err(AppError::ConfigError(anyhow::anyhow!(
+                "Encryption service initialization failed: {}", e
+            )));
+        }
+    }
+
+    // Create wallet service
+    let wallet_service = WalletService::new(encryption_service)
+        .with_wallet_db(wallet_db)
+        .with_user_db(user_db);
     
     let wallet_service = Arc::new(wallet_service);
 

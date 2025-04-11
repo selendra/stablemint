@@ -88,10 +88,18 @@
             "hide_secrets": true
         }
     },
-     "redis": {
+    "redis": {
         "url": "redis://:redis_secure_password@0.0.0.0:6379",
         "pool_size": 10,
         "connection_timeout": 5000,
         "prefix": "app"
+    },
+    "hcp_secrets": {
+        "base_url": "https://api.cloud.hashicorp.com",
+        "org_id": "your-organization-id",
+        "project_id": "your-project-id",
+        "app_name": "your-app-name",
+        "client_id": "your-client-id",
+        "client_secret": "your-client-secret"
     }
 }

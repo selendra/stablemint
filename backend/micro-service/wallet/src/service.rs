@@ -8,9 +8,6 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
-// Import the Vault client
-use app_utils::vault::VaultClient;
-
 /// Trait defining the wallet service interface
 #[async_trait]
 pub trait WalletServiceTrait: Send + Sync {
@@ -50,31 +47,16 @@ pub struct WalletService {
     wallet_db: Option<Arc<DbService<'static, Wallet>>>,
     pub user_db: Option<Arc<DbService<'static, User>>>,
     encryption_service: Arc<WalletEncryptionService>,
-    vault_client: Arc<VaultClient>,
 }
 
 impl WalletService {
     /// Create a new wallet service
-    pub fn new(vault_url: &str, _vault_username: &str, _vault_password: &str) -> Self {
-        let vault_client = Arc::new(VaultClient::new(vault_url));
-        
+    pub fn new(encryption_service: Arc<WalletEncryptionService>) -> Self {
         Self {
             wallet_db: None,
             user_db: None,
-            encryption_service: Arc::new(WalletEncryptionService::new(Arc::clone(&vault_client))),
-            vault_client,
+            encryption_service,
         }
-    }
-
-    /// Initialize the wallet service - establishes connection to Vault
-    pub async fn initialize(&self) -> AppResult<()> {
-        // Login to Vault
-        self.vault_client.login("wallet-service", "service-password").await?;
-        
-        // Initialize the encryption service
-        self.encryption_service.initialize().await?;
-        
-        Ok(())
     }
 
     /// Add a wallet database service
@@ -463,218 +445,6 @@ impl WalletServiceTrait for WalletService {
             Err(AppError::ServerError(anyhow::anyhow!(
                 "Wallet database not available"
             )))
-        }
-    }
-}
-
-
-// For testing purposes
-#[cfg(test)]
-pub mod mocks {
-    use super::*;
-    use chrono::Utc;
-    use std::sync::{Arc, Mutex};
-
-    pub struct MockWalletService {
-        wallets: Arc<Mutex<Vec<Wallet>>>,
-        users: Arc<Mutex<Vec<User>>>,
-    }
-
-    impl MockWalletService {
-        pub fn _new() -> Self {
-            Self {
-                wallets: Arc::new(Mutex::new(Vec::new())),
-                users: Arc::new(Mutex::new(Vec::new())),
-            }
-        }
-
-        // Add a user for testing
-        pub fn _add_user(&self, user: User) {
-            self.users.lock().unwrap().push(user);
-        }
-    }
-
-    #[async_trait]
-    impl WalletServiceTrait for MockWalletService {
-
-        async fn create_wallet(&self, user_email: &str, pin: &str) -> AppResult<WalletInfo> {
-            // Validate PIN format
-            if pin.len() != 6 || !pin.chars().all(|c| c.is_digit(10)) {
-                return Err(AppError::ValidationError(
-                    "PIN must be a 6-digit number".to_string(),
-                ));
-            }
-            
-            // Check if user exists
-            let users = self.users.lock().unwrap();
-            if !users.iter().any(|u| u.email == user_email) {
-                return Err(AppError::NotFoundError(format!(
-                    "User with email '{}' not found",
-                    user_email
-                )));
-            }
-
-            // Check if wallet already exists
-            let wallets = self.wallets.lock().unwrap();
-            if let Some(existing) = wallets.iter().find(|w| w.user_email == user_email) {
-                return Ok(WalletInfo::from(existing.clone()));
-            }
-
-            drop(wallets);
-
-            // Create new wallet
-            let address = format!("0x{}", hex::encode(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
-            let private_key = format!("ENCRYPTED:MOCKPIN:{}:mock_private_key", pin);
-
-            let wallet = Wallet {
-                id: Wallet::generate_id(),
-                user_email: user_email.to_string(),
-                address: address.clone(),
-                private_key,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            };
-
-            let wallet_info = WalletInfo::from(wallet.clone());
-            self.wallets.lock().unwrap().push(wallet);
-
-            Ok(wallet_info)
-        }
-
-        async fn get_wallet_by_user_email(&self, user_email: &str) -> AppResult<WalletInfo> {
-            let wallets = self.wallets.lock().unwrap();
-            if let Some(wallet) = wallets.iter().find(|w| w.user_email == user_email) {
-                Ok(WalletInfo::from(wallet.clone()))
-            } else {
-                Err(AppError::NotFoundError(format!(
-                    "Wallet not found for user: {}",
-                    user_email
-                )))
-            }
-        }
-
-        async fn get_wallet_by_id(&self, wallet_id: &str) -> AppResult<WalletInfo> {
-            let wallets = self.wallets.lock().unwrap();
-            if let Some(wallet) = wallets.iter().find(|w| w.id.id.to_string() == wallet_id) {
-                Ok(WalletInfo::from(wallet.clone()))
-            } else {
-                Err(AppError::NotFoundError(format!(
-                    "Wallet with ID '{}' not found",
-                    wallet_id
-                )))
-            }
-        }
-
-        async fn transfer(
-            &self,
-            _from_wallet_id: &str,
-            _to_address: &str,
-            amount: f64,
-            pin: &str,
-        ) -> AppResult<String> {
-            // Mock validation
-            if pin.len() != 6 || !pin.chars().all(|c| c.is_digit(10)) {
-                return Err(AppError::ValidationError(
-                    "PIN must be 6 digits".to_string(),
-                ));
-            }
-
-            if amount <= 0.0 {
-                return Err(AppError::ValidationError(
-                    "Amount must be greater than 0".to_string(),
-                ));
-            }
-
-            // Mock transaction hash
-            Ok(format!(
-                "0x{}",
-                hex::encode(uuid::Uuid::new_v4().as_bytes())
-            ))
-        }
-
-        async fn get_balance(&self, wallet_id: &str) -> AppResult<f64> {
-            // Check if wallet exists
-            let wallets = self.wallets.lock().unwrap();
-            if wallets.iter().any(|w| w.id.id.to_string() == wallet_id) {
-                Ok(10.0) // Mock balance
-            } else {
-                Err(AppError::NotFoundError(format!(
-                    "Wallet with ID '{}' not found",
-                    wallet_id
-                )))
-            }
-        }
-        
-        async fn associate_wallet_with_user(&self, user_id: &str, wallet_id: &str) -> AppResult<()> {
-            let mut users = self.users.lock().unwrap();
-            if let Some(user) = users.iter_mut().find(|u| u.id.id.to_string() == user_id) {
-                user.wallet_id = Some(wallet_id.to_string());
-                user.updated_at = Utc::now();
-                Ok(())
-            } else {
-                Err(AppError::NotFoundError(format!(
-                    "User with ID '{}' not found",
-                    user_id
-                )))
-            }
-        }
-        
-        async fn verify_pin(&self, wallet_id: &str, pin: &str) -> AppResult<bool> {
-            // Validate PIN format
-            if pin.len() != 6 || !pin.chars().all(|c| c.is_digit(10)) {
-                return Err(AppError::ValidationError(
-                    "PIN must be a 6-digit number".to_string(),
-                ));
-            }
-            
-            // Get wallet
-            let wallets = self.wallets.lock().unwrap();
-            if let Some(wallet) = wallets.iter().find(|w| w.id.id.to_string() == wallet_id) {
-                // In mock, we'll just check if the PIN appears in the encrypted string
-                if wallet.private_key.contains(&format!(":{}:", pin)) {
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }
-            } else {
-                Err(AppError::NotFoundError(format!(
-                    "Wallet with ID '{}' not found",
-                    wallet_id
-                )))
-            }
-        }
-        
-        async fn change_wallet_pin(&self, wallet_id: &str, old_pin: &str, new_pin: &str) -> AppResult<()> {
-            // Validate PIN format
-            if old_pin.len() != 6 || !old_pin.chars().all(|c| c.is_digit(10)) {
-                return Err(AppError::ValidationError(
-                    "Old PIN must be a 6-digit number".to_string(),
-                ));
-            }
-            
-            if new_pin.len() != 6 || !new_pin.chars().all(|c| c.is_digit(10)) {
-                return Err(AppError::ValidationError(
-                    "New PIN must be a 6-digit number".to_string(),
-                ));
-            }
-            
-            // Get wallet
-            let mut wallets = self.wallets.lock().unwrap();
-            if let Some(wallet) = wallets.iter_mut().find(|w| w.id.id.to_string() == wallet_id) {
-                // In mock, change PIN in encrypted string
-                if wallet.private_key.contains(&format!(":{}:", old_pin)) {
-                    wallet.private_key = wallet.private_key.replace(&format!(":{}:", old_pin), &format!(":{}:", new_pin));
-                    wallet.updated_at = Utc::now();
-                    Ok(())
-                } else {
-                    Err(AppError::ValidationError("Invalid old PIN".to_string()))
-                }
-            } else {
-                Err(AppError::NotFoundError(format!(
-                    "Wallet with ID '{}' not found",
-                    wallet_id
-                )))
-            }
         }
     }
 }

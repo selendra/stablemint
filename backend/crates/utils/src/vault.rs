@@ -12,11 +12,19 @@ pub struct VaultClient {
     client: Client,
     base_url: String,
     token: Arc<RwLock<Option<String>>>,
+    client_id: Option<String>,     // HCP Client ID
+    client_secret: Option<String>, // HCP Client Secret
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct VaultLoginRequest {
     password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct HcpLoginRequest {
+    client_id: String,
+    client_secret: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,11 +59,77 @@ impl VaultClient {
             client: Client::new(),
             base_url: base_url.to_string(),
             token: Arc::new(RwLock::new(None)),
+            client_id: None,
+            client_secret: None,
         }
     }
 
-    /// Login to Vault using username and password
+    /// Configure HCP credentials
+    pub fn with_hcp_credentials(mut self, client_id: &str, client_secret: &str) -> Self {
+        self.client_id = Some(client_id.to_string());
+        self.client_secret = Some(client_secret.to_string());
+        self
+    }
+
+    /// Login to HCP Vault using client credentials
+    pub async fn login_hcp(&self) -> AppResult<()> {
+        let client_id = self.client_id.clone().ok_or_else(|| {
+            error!("HCP Client ID not configured");
+            AppError::ConfigError(anyhow::anyhow!("HCP Client ID not configured"))
+        })?;
+
+        let client_secret = self.client_secret.clone().ok_or_else(|| {
+            error!("HCP Client Secret not configured");
+            AppError::ConfigError(anyhow::anyhow!("HCP Client Secret not configured"))
+        })?;
+
+        let login_request = HcpLoginRequest {
+            client_id,
+            client_secret,
+        };
+
+        let url = format!("{}/v1/auth/approle/login", self.base_url);
+        let response = self.client
+            .post(&url)
+            .json(&login_request)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to login to HCP Vault: {}", e);
+                AppError::NetworkError(format!("Failed to connect to HCP Vault: {}", e))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("HCP Vault login failed with status {}: {}", status, text);
+            return Err(AppError::AuthenticationError(
+                format!("Failed to authenticate with HCP Vault: HTTP {}: {}", status, text)
+            ));
+        }
+
+        let login_response: VaultLoginResponse = response.json().await.map_err(|e| {
+            error!("Failed to parse HCP Vault login response: {}", e);
+            AppError::NetworkError(format!("Invalid HCP Vault response: {}", e))
+        })?;
+
+        // Store the token
+        let mut token_guard = self.token.write().await;
+        *token_guard = Some(login_response.auth.client_token);
+        drop(token_guard);
+
+        info!("Successfully authenticated with HCP Vault");
+        Ok(())
+    }
+
+    /// Login to Vault using username and password (legacy for local Vault)
     pub async fn login(&self, username: &str, password: &str) -> AppResult<()> {
+        // If HCP credentials are configured, use them instead
+        if self.client_id.is_some() && self.client_secret.is_some() {
+            info!("HCP credentials detected, using HCP login instead of username/password");
+            return self.login_hcp().await;
+        }
+
         let login_request = VaultLoginRequest {
             password: password.to_string(),
         };

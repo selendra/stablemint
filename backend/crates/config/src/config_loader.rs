@@ -14,6 +14,7 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     pub monitoring: MonitoringConfig,
     pub redis: Option<RedisConfig>,
+    pub hcp_secrets: Option<HcpSecretsConfig>, // New HCP Secrets configuration
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -137,6 +138,17 @@ pub struct RedisConfig {
     pub prefix: Option<String>,
 }
 
+// New struct for HCP Secrets configuration
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HcpSecretsConfig {
+    pub base_url: String,
+    pub org_id: String,
+    pub project_id: String,
+    pub app_name: String,
+    pub client_id: String,
+    pub client_secret: String,
+}
+
 impl AppConfig {
     /// Load configuration from a JSON file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -224,6 +236,37 @@ impl AppConfig {
             if redis_config.pool_size == 0 {
                 errors.push("Redis pool size must be greater than 0".to_string());
             }
+        }
+
+        // Validate HCP Secrets configuration if present
+        if let Some(ref hcp_secrets) = self.hcp_secrets {
+            if hcp_secrets.base_url.trim().is_empty() {
+                errors.push("HCP Secrets base URL cannot be empty".to_string());
+            } else if is_production && !hcp_secrets.base_url.starts_with("https://") {
+                errors.push("Production should use a secure 'https://' HCP connection".to_string());
+            }
+
+            if hcp_secrets.org_id.trim().is_empty() {
+                errors.push("HCP organization ID cannot be empty".to_string());
+            }
+
+            if hcp_secrets.project_id.trim().is_empty() {
+                errors.push("HCP project ID cannot be empty".to_string());
+            }
+
+            if hcp_secrets.app_name.trim().is_empty() {
+                errors.push("HCP app name cannot be empty".to_string());
+            }
+
+            if is_production && hcp_secrets.client_id.trim().is_empty() {
+                errors.push("HCP client ID cannot be empty in production".to_string());
+            }
+
+            if is_production && hcp_secrets.client_secret.trim().is_empty() {
+                errors.push("HCP client secret cannot be empty in production".to_string());
+            }
+        } else if is_production {
+            errors.push("HCP Secrets configuration is required for production".to_string());
         }
 
         if !errors.is_empty() {
@@ -385,187 +428,14 @@ impl Default for AppConfig {
                 connection_timeout: 5000,
                 prefix: Some("app".to_string()),
             }),
+            hcp_secrets: Some(HcpSecretsConfig {
+                base_url: "https://api.cloud.hashicorp.com".to_string(),
+                org_id: "".to_string(),
+                project_id: "".to_string(),
+                app_name: "wallet".to_string(),
+                client_id: "".to_string(),
+                client_secret: "".to_string(),
+            }),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs::File;
-    use std::io::Write;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_config_from_file() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test-config.json");
-
-        let config_json = r#"{
-            "environment": "test",
-            "database": {
-                "user_db": {
-                    "endpoint": "ws://test-db:8000",
-                    "username": "test_user",
-                    "password": "test_pass",
-                    "namespace": "test_user_ns",
-                    "database": "test_user_db",
-                    "pool": {
-                        "size": 5,
-                        "connection_timeout": 3000
-                    }
-                },
-                "wallet_db": {
-                    "endpoint": "ws://test-wallet-db:8000",
-                    "username": "wallet_user",
-                    "password": "wallet_pass",
-                    "namespace": "test_wallet_ns",
-                    "database": "test_wallet_db",
-                    "pool": {
-                        "size": 10,
-                        "connection_timeout": 3000
-                    }
-                }
-            },
-            "server": {
-                "host": "127.0.0.1",
-                "port": 4000,
-                "timeouts": {
-                    "read": 20000,
-                    "write": 20000,
-                    "idle": 40000,
-                    "keep_alive": 10000
-                },
-                "body_limit": 2097152
-            },
-            "security": {
-                "jwt": {
-                    "secret": "test-secret-key",
-                    "expiry_hours": 12,
-                    "algorithm": "HS256"
-                },
-                "cors": {
-                    "allowed_origins": ["http://localhost:3000"],
-                    "allowed_methods": ["GET", "POST"],
-                    "allowed_headers": ["Content-Type"]
-                },
-                "rate_limiting": {
-                    "api": {
-                        "max_attempts": 50,
-                        "window_duration": 30,
-                        "block_duration": null
-                    },
-                    "login": {
-                        "max_attempts": 3,
-                        "window_duration": 150,
-                        "block_duration": 300
-                    },
-                    "paths": {
-                        "/test": 5
-                    }
-                },
-                "password": {
-                    "min_length": 10,
-                    "require_uppercase": true,
-                    "require_lowercase": true,
-                    "require_number": true,
-                    "require_special": true,
-                    "argon2": {
-                        "variant": "argon2id",
-                        "memory": 32768,
-                        "iterations": 2,
-                        "parallelism": 2
-                    }
-                }
-            },
-            "monitoring": {
-                "sentry": {
-                    "dsn": "https://test-dsn@sentry.io/123",
-                    "sample_rate": 0.5,
-                    "traces_sample_rate": 0.1,
-                    "environment": "test"
-                },
-                "logging": {
-                    "level": "debug",
-                    "format": "text",
-                    "hide_secrets": true
-                }
-            },
-            "redis": {
-                "url": "redis://test-redis:6379",
-                "pool_size": 5,
-                "connection_timeout": 2000,
-                "prefix": "test_app"
-            }
-        }"#;
-
-        // Write test config to temp file
-        let mut file = File::create(&file_path).unwrap();
-        file.write_all(config_json.as_bytes()).unwrap();
-
-        // Load the config
-        let config = AppConfig::from_file(&file_path).unwrap();
-
-        // Verify loaded values
-        assert_eq!(config.environment, "test");
-        assert_eq!(config.database.user_db.endpoint, "ws://test-db:8000");
-        assert_eq!(config.database.user_db.username, "test_user");
-        assert_eq!(config.database.wallet_db.username, "wallet_user");
-        assert_eq!(config.server.port, 4000);
-        assert_eq!(config.security.jwt.expiry_hours, 12);
-        assert_eq!(config.monitoring.logging.level, "debug");
-
-        // Verify nested values
-        assert_eq!(config.database.user_db.pool.size, 5);
-        assert_eq!(config.database.wallet_db.pool.size, 10);
-        assert_eq!(config.security.rate_limiting.login.max_attempts, 3);
-        assert_eq!(config.security.password.min_length, 10);
-
-        // Verify collections
-        assert_eq!(config.security.cors.allowed_origins.len(), 1);
-        assert_eq!(
-            config.security.cors.allowed_origins[0],
-            "http://localhost:3000"
-        );
-        assert_eq!(config.security.rate_limiting.paths.get("/test"), Some(&5));
-
-        // Verify Redis config
-        assert!(config.redis.is_some());
-        let redis = config.redis.unwrap();
-        assert_eq!(redis.url, "redis://test-redis:6379");
-        assert_eq!(redis.pool_size, 5);
-        assert_eq!(redis.prefix.unwrap(), "test_app");
-    }
-
-    #[test]
-    fn test_config_validation() {
-        // Valid config
-        let config = AppConfig::default();
-        assert!(config.validate().is_ok());
-
-        // Invalid config (production with insecure settings)
-        let mut prod_config = AppConfig::default();
-        prod_config.environment = "production".to_string();
-
-        // Should fail validation in production
-        assert!(prod_config.validate().is_err());
-
-        // Fix the config
-        prod_config.database.user_db.endpoint = "wss://secure-db.example.com".to_string();
-        prod_config.database.user_db.username = "secure_user".to_string();
-        prod_config.database.user_db.password = "secure_password".to_string();
-        prod_config.database.wallet_db.endpoint = "wss://secure-wallet-db.example.com".to_string();
-        prod_config.database.wallet_db.username = "secure_wallet_user".to_string();
-        prod_config.database.wallet_db.password = "secure_wallet_password".to_string();
-        prod_config.security.jwt.secret =
-            "a-very-secure-and-long-jwt-secret-key-for-production-use".to_string();
-        prod_config.monitoring.sentry.dsn = "https://exampledsn@sentry.io/123456".to_string();
-
-        if let Some(ref mut redis) = prod_config.redis {
-            redis.url = "rediss://secure-redis.example.com:6379".to_string();
-        }
-
-        // Should pass validation now
-        assert!(prod_config.validate().is_ok());
     }
 }

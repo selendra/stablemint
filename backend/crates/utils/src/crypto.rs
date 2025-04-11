@@ -9,8 +9,8 @@ use uuid::Uuid;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-// Import the Vault client
-use crate::vault::VaultClient;
+// Import the HCP Secrets client
+use crate::secrets::SecretsClient;
 
 // Constants for encryption
 const PBKDF2_ITERATIONS: u32 = 10000; // High number for security
@@ -19,7 +19,7 @@ const IV_LENGTH: usize = 12;
 const KEY_LENGTH: usize = 32; // 256 bits
 const TAG_LENGTH: usize = 16; // GCM authentication tag
 
-// DEK cache for performance - only caches keys after they're fetched from Vault
+// DEK cache for performance - only caches keys after they're fetched from HCP
 pub struct DekCache {
     cache: RwLock<HashMap<String, Vec<u8>>>,
 }
@@ -46,34 +46,41 @@ impl DekCache {
 pub struct WalletEncryptionService {
     // Fields for master key identification
     master_key_id: String,
-    // Vault client for secure key storage
-    vault_client: Arc<VaultClient>,
+    // HCP Secrets client for secure key storage
+    secrets_client: Arc<SecretsClient>,
     // In-memory cache of data encryption keys
     dek_cache: Arc<DekCache>,
 }
 
 impl WalletEncryptionService {
-    /// Creates a new WalletEncryptionService instance
-    pub fn new(vault_client: Arc<VaultClient>) -> Self {
+    /// Creates a new WalletEncryptionService instance with HCP Secrets
+    pub fn new(secrets_client: Arc<SecretsClient>) -> Self {
         // Generate a master key ID
         let master_key_id = format!("master-{}", Uuid::new_v4());
         
         Self {
             master_key_id,
-            vault_client,
+            secrets_client,
             dek_cache: Arc::new(DekCache::new()),
         }
     }
 
-    /// Initialize the service by ensuring master key exists in Vault
+    /// Initialize the service by ensuring master key exists in HCP Secrets
     pub async fn initialize(&self) -> AppResult<()> {
-        // Check if master key already exists in Vault
-        let vault_path = format!("crypto/master_keys/{}", self.master_key_id);
+        // Make sure the secrets client is authenticated
+        if !self.secrets_client.is_authenticated().await {
+            self.secrets_client.initialize().await?;
+        }
         
-        match self.vault_client.get_secret(&vault_path, "key").await {
+        // Format the secret name to be compliant with HCP Secrets naming requirements
+        let safe_key_id = self.master_key_id.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+        let secret_name = format!("wallet_master_key_{}", safe_key_id);
+        
+        // Check if master key already exists in HCP
+        match self.secrets_client.get_secret(&secret_name).await {
             Ok(_) => {
                 // Master key exists, we're good
-                tracing::info!("Using existing master key from Vault: {}", self.master_key_id);
+                tracing::info!("Using existing master key from HCP Secrets: {}", self.master_key_id);
                 Ok(())
             },
             Err(AppError::NotFoundError(_)) => {
@@ -81,27 +88,32 @@ impl WalletEncryptionService {
                 let new_key = Self::generate_random_bytes(KEY_LENGTH);
                 let key_hex = hex::encode(&new_key);
                 
-                // Store the key in Vault
-                self.vault_client.store_secret(&vault_path, "key", &key_hex).await?;
-                tracing::info!("Generated and stored new master key in Vault: {}", self.master_key_id);
+                // Store the key in HCP
+                self.secrets_client.store_secret(&secret_name, &key_hex).await?;
+                tracing::info!("Generated and stored new master key in HCP Secrets: {}", self.master_key_id);
                 Ok(())
             },
             Err(e) => Err(e),
         }
     }
-
+    
     /// Get the master key identifier
     pub fn get_master_key_id(&self) -> &str {
         &self.master_key_id
     }
 
-    /// Fetch master key from Vault
+    /// Fetch master key from HCP Secrets
     async fn get_master_key(&self) -> AppResult<Vec<u8>> {
-        let vault_path = format!("crypto/master_keys/{}", self.master_key_id);
-        let key_hex = self.vault_client.get_secret(&vault_path, "key").await?;
+        // Format the secret name to be compliant with HCP Secrets naming requirements
+        // Only use letters, numbers, and underscores - replace dashes and special chars with underscores
+        let safe_key_id = self.master_key_id.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+        let secret_name = format!("wallet_master_key_{}", safe_key_id);
+        
+        // Get the key from HCP Secrets
+        let key_hex = self.secrets_client.get_secret(&secret_name).await?;
         
         hex::decode(key_hex).map_err(|e| {
-            AppError::CryptoError(format!("Invalid master key format in Vault: {}", e))
+            AppError::CryptoError(format!("Invalid master key format in HCP Secrets: {}", e))
         })
     }
 
@@ -122,7 +134,7 @@ impl WalletEncryptionService {
         let dek_iv = Self::generate_random_bytes(IV_LENGTH);
         let dek_encrypted = Self::aes_gcm_encrypt(&pin_encrypted, &dek, &dek_iv)?;
         
-        // Step 5: Encrypt the DEK with the master key from Vault
+        // Step 5: Encrypt the DEK with the master key from HCP
         let master_key = self.get_master_key().await?;
         let master_iv = Self::generate_random_bytes(IV_LENGTH);
         let encrypted_dek = Self::aes_gcm_encrypt(&dek, &master_key, &master_iv)?;
