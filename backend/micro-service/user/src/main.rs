@@ -78,21 +78,14 @@ async fn main() -> Result<(), AppError> {
         path_limits.insert(path.clone(), *limit);
     }
 
-    // Initialize Redis configuration
-    let redis_config = config.redis.clone().ok_or_else(|| {
-        AppError::ConfigError(anyhow::anyhow!(
-            "Redis configuration is required but not provided"
-        ))
-    })?;
-
     info!("Initializing Redis-based distributed rate limiting");
 
     // Create API rate limiter with Redis backend
     let api_rate_limiter =
-        Arc::new(create_redis_api_rate_limiter(&redis_config.url, Some(path_limits)).await?);
+        Arc::new(create_redis_api_rate_limiter(&config.redis.url, Some(path_limits)).await?);
 
     // Create login rate limiter with Redis backend
-    let login_rate_limiter = Arc::new(create_redis_login_rate_limiter(&redis_config.url).await?);
+    let login_rate_limiter = Arc::new(create_redis_login_rate_limiter(&config.redis.url).await?);
 
     // Create auth service with JWT config from our config file
     let auth_service = Arc::new(

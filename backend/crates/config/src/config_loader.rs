@@ -12,9 +12,9 @@ pub struct AppConfig {
     pub database: DatabasesConfig,
     pub server: ServerConfig,
     pub security: SecurityConfig,
+    pub encrypt_secrets: EncryptSecretsConfig,
     pub monitoring: MonitoringConfig,
-    pub redis: Option<RedisConfig>,
-    pub hcp_secrets: Option<HcpSecretsConfig>, // New HCP Secrets configuration
+    pub redis: RedisConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -140,14 +140,10 @@ pub struct RedisConfig {
 
 // New struct for HCP Secrets configuration
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct HcpSecretsConfig {
+pub struct EncryptSecretsConfig {
     pub master_key_name: String,
-    pub base_url: String,
-    pub org_id: String,
-    pub project_id: String,
-    pub app_name: String,
-    pub client_id: String,
-    pub client_secret: String,
+    pub master_key: String,
+
 }
 
 impl AppConfig {
@@ -225,49 +221,24 @@ impl AppConfig {
         }
 
         // Validate Redis configuration if present
-        if let Some(ref redis_config) = self.redis {
-            if redis_config.url.trim().is_empty() {
+        
+            if self.redis.url.trim().is_empty() {
                 errors.push("Redis URL cannot be empty".to_string());
-            } else if is_production && !redis_config.url.starts_with("rediss://") {
+            } else if is_production && !self.redis.url.starts_with("rediss://") {
                 errors.push(
                     "Production should use a secure 'rediss://' Redis connection".to_string(),
                 );
             }
 
-            if redis_config.pool_size == 0 {
+            if self.redis.pool_size == 0 {
                 errors.push("Redis pool size must be greater than 0".to_string());
             }
-        }
+        
 
-        // Validate HCP Secrets configuration if present
-        if let Some(ref hcp_secrets) = self.hcp_secrets {
-            if hcp_secrets.base_url.trim().is_empty() {
-                errors.push("HCP Secrets base URL cannot be empty".to_string());
-            } else if is_production && !hcp_secrets.base_url.starts_with("https://") {
-                errors.push("Production should use a secure 'https://' HCP connection".to_string());
-            }
-
-            if hcp_secrets.org_id.trim().is_empty() {
-                errors.push("HCP organization ID cannot be empty".to_string());
-            }
-
-            if hcp_secrets.project_id.trim().is_empty() {
-                errors.push("HCP project ID cannot be empty".to_string());
-            }
-
-            if hcp_secrets.app_name.trim().is_empty() {
-                errors.push("HCP app name cannot be empty".to_string());
-            }
-
-            if is_production && hcp_secrets.client_id.trim().is_empty() {
-                errors.push("HCP client ID cannot be empty in production".to_string());
-            }
-
-            if is_production && hcp_secrets.client_secret.trim().is_empty() {
-                errors.push("HCP client secret cannot be empty in production".to_string());
-            }
-        } else if is_production {
-            errors.push("HCP Secrets configuration is required for production".to_string());
+         // Validate HCP Secrets configuration if present
+    
+        if self.encrypt_secrets.master_key.trim().is_empty() {
+            errors.push("encrypt secrets cannot be empty".to_string());
         }
 
         if !errors.is_empty() {
@@ -423,21 +394,16 @@ impl Default for AppConfig {
                     hide_secrets: true,
                 },
             },
-            redis: Some(RedisConfig {
+            redis: RedisConfig {
                 url: "redis://localhost:6379".to_string(),
                 pool_size: 10,
                 connection_timeout: 5000,
                 prefix: Some("app".to_string()),
-            }),
-            hcp_secrets: Some(HcpSecretsConfig {
+            },
+            encrypt_secrets: EncryptSecretsConfig {
                 master_key_name: "encryption_service".to_string(),
-                base_url: "https://api.cloud.hashicorp.com".to_string(),
-                org_id: "".to_string(),
-                project_id: "".to_string(),
-                app_name: "wallet".to_string(),
-                client_id: "".to_string(),
-                client_secret: "".to_string(),
-            }),
+                master_key: "encryption_service".to_string(),
+            },
         }
     }
 }

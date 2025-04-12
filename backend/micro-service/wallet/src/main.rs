@@ -82,18 +82,11 @@ async fn main() -> Result<(), AppError> {
         path_limits.insert(path.clone(), *limit);
     }
 
-    // Initialize Redis configuration
-    let redis_config = config.redis.clone().ok_or_else(|| {
-        AppError::ConfigError(anyhow::anyhow!(
-            "Redis configuration is required but not provided"
-        ))
-    })?;
-
     info!("Initializing Redis-based distributed rate limiting");
 
     // Create API rate limiter with Redis backend
     let api_rate_limiter =
-        Arc::new(create_redis_api_rate_limiter(&redis_config.url, Some(path_limits)).await?);
+        Arc::new(create_redis_api_rate_limiter(&config.redis.url, Some(path_limits)).await?);
 
     // Create JWT service for token validation
     let jwt_service = Arc::new(JwtService::new(
@@ -104,8 +97,8 @@ async fn main() -> Result<(), AppError> {
     // Check for master key ID in environment variables or use a default
     // Update this with your preferred config structure for master key ID
     // This is a placeholder - modify as needed for your configuration approach
-    let master_key_id = config.hcp_secrets.as_ref().unwrap().master_key_name.clone();
-    let master_key = "supersecretkey".as_bytes();
+    let master_key_id = config.encrypt_secrets.master_key_name;
+    let master_key = config.encrypt_secrets.master_key.as_bytes();
 
     // Create encryption service with the specified master key ID
     let encryption_service = Arc::new(WalletEncryptionService::new(&master_key_id, master_key));
