@@ -37,30 +37,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      
-  vault:
-    image: hashicorp/vault:latest
-    container_name: vault
-    ports:
-      - "8200:8200"
-    restart: unless-stopped
-    volumes:
-      - ./vault/config:/vault/config
-      - ./vault/data:/vault/data
-      - ./vault/logs:/vault/logs
-    cap_add:
-      - IPC_LOCK
-    environment:
-      - VAULT_ADDR=http://0.0.0.0:8200
-      - VAULT_API_ADDR=http://0.0.0.0:8200
-    entrypoint: vault server -config=/vault/config/vault.json
-    healthcheck:
-      test: ["CMD", "vault", "status"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - app-network
 
 networks:
   app-network:
