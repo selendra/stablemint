@@ -94,13 +94,8 @@
         "connection_timeout": 5000,
         "prefix": "app"
     },
-    "hcp_secrets": {
+    "encrypt_secrets": {
         "master_key_name": "encryption_service",
-        "base_url": "https://api.cloud.hashicorp.com",
-        "org_id": "your-organization-id",
-        "project_id": "your-project-id",
-        "app_name": "your-app-name",
-        "client_id": "your-client-id",
-        "client_secret": "your-client-secret"
+        "master_key": "encryption_service"
     }
 }
