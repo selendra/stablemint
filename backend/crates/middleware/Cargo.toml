@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 app-error = { workspace = true }
+app-config = { workspace = true }
 
 lazy_static = { workspace = true }
 regex = { workspace = true }
@@ -18,6 +19,7 @@ axum = { workspace = true }
 tracing = { workspace = true }
 tower = { workspace = true }
 redis = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 uuid = { workspace = true }

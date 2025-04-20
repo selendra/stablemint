@@ -21,7 +21,7 @@ edition = "2024"
 # utilities dependencies
 regex = "1.11.1"
 dotenv = "0.15.0"
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 thiserror = "2.0.12"
 lazy_static = "1.5.0"
 serde_json = "1.0.140"
@@ -36,13 +36,12 @@ sentry-tracing = "0.37.0"
 tracing = "0.1.41"
 
 # security dependencies
-uuid = { version = "1.16.0", features = ["v4", "serde"] }
 jsonwebtoken = "9.3.1"
-argon2 = "0.5.3"
 hex = "0.4.3"
-rand = "0.9.0"
-rust-crypto = "0.2.36"
+rand = "0.9.1"
+argon2 = { version = "0.5.3" }
 reqwest = { version = "0.12.15", features = ["json"] }
+uuid = { version = "1.16.0", features = ["v4", "serde"] }
 
 #crypto dependencies
 bip39 = { version = "2.1.0", features = ["rand"] }

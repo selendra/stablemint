@@ -1,16 +1,43 @@
+// backend/crates/middleware/src/security/password.rs
+use app_config::AppConfig;
 use app_error::{AppError, AppResult};
 use argon2::{
-    Argon2,
+    Argon2, Params, Algorithm, Version,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use tracing::{debug, error};
 
-/// Hash a password using Argon2id
+/// Hash a password using Argon2 with config settings
 pub fn hash_password(password: &str) -> AppResult<String> {
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
+    
+    // Load configuration (this handles errors and returns defaults if loading fails)
+    let config = AppConfig::load().unwrap_or_default();
+    let argon2_config = &config.security.password.argon2;
+    
+    // Parse the variant from configuration
+    let algorithm = match argon2_config.variant.to_lowercase().as_str() {
+        "argon2i" => Algorithm::Argon2i,
+        "argon2d" => Algorithm::Argon2d,
+        _ => Algorithm::Argon2id, // Default to Argon2id for any other value
+    };
+    
+    // Create custom parameters from config
+    let params = Params::new(
+        argon2_config.memory,              // Memory cost (in KiB)
+        argon2_config.iterations,          // Number of iterations
+        argon2_config.parallelism,         // Degree of parallelism
+        Some(64),                          // Output length (fixed for compatibility)
+    )
+    .map_err(|e| {
+        error!("Failed to create Argon2 params: {}", e);
+        AppError::ServerError(anyhow::anyhow!("Failed to create Argon2 params: {}", e))
+    })?;
+    
+    // Create Argon2 instance with the configured parameters
+    let argon2 = Argon2::new(algorithm, Version::V0x13, params);
 
-    debug!("Hashing password");
+    debug!("Hashing password with Argon2 variant: {}", argon2_config.variant);
     let password_hash = argon2
         .hash_password(password.as_bytes(), &salt)
         .map_err(|e| {
@@ -29,6 +56,8 @@ pub fn verify_password(password: &str, password_hash: &str) -> AppResult<bool> {
         AppError::ServerError(anyhow::anyhow!("Invalid password hash: {}", e))
     })?;
 
+    // For verification, we need to use the same algorithm that was used for hashing
+    // The hash string already contains the parameters, so we can just use the default Argon2
     let is_valid = Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok();

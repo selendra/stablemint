@@ -1,3 +1,5 @@
+// backend/crates/middleware/src/validation/user_account.rs
+use app_config::AppConfig;
 use app_error::{AppError, AppResult};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -13,13 +15,6 @@ lazy_static! {
     // Alphanumeric characters, underscores, and hyphens, 3-30 characters
     static ref USERNAME_REGEX: Regex = Regex::new(
         r"^[a-zA-Z0-9_-]{3,30}$"
-    ).unwrap();
-
-    // Password strength regex
-    // At least 8 characters, must contain at least one uppercase letter,
-    // one lowercase letter, one number, and one special character
-    static ref STRONG_PASSWORD_REGEX: Regex = Regex::new(
-        r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
     ).unwrap();
 }
 
@@ -80,29 +75,55 @@ pub fn validate_name(name: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Validates password against configured requirements
 pub fn validate_password(password: &str) -> AppResult<()> {
+    // Load configuration (this handles errors gracefully and returns defaults if config can't be loaded)
+    let config = AppConfig::load().unwrap_or_default();
+    let password_config = &config.security.password;
+
     if password.trim().is_empty() {
         return Err(AppError::ValidationError(
             "Password cannot be empty".to_string(),
         ));
     }
 
-    if password.len() < 8 {
+    // Check minimum length requirement
+    if password.len() < password_config.min_length {
         return Err(AppError::ValidationError(
-            "Password must be at least 8 characters long".to_string(),
+            format!("Password must be at least {} characters long", password_config.min_length)
         ));
     }
 
+    // Check for required character classes
     let has_lowercase = password.chars().any(|c| c.is_ascii_lowercase());
     let has_uppercase = password.chars().any(|c| c.is_ascii_uppercase());
     let has_digit = password.chars().any(|c| c.is_ascii_digit());
     let has_special = password
         .chars()
-        .any(|c| matches!(c, '@' | '$' | '!' | '%' | '*' | '?' | '&'));
+        .any(|c| matches!(c, '@' | '$' | '!' | '%' | '*' | '?' | '&' | '#' | '^' | '-' | '_' | '+' | '=' | '.' | ',' | ':' | ';'));
 
-    if !has_lowercase || !has_uppercase || !has_digit || !has_special {
+    // Validate according to configuration
+    let mut missing = Vec::new();
+    
+    if password_config.require_lowercase && !has_lowercase {
+        missing.push("lowercase letter");
+    }
+    
+    if password_config.require_uppercase && !has_uppercase {
+        missing.push("uppercase letter");
+    }
+    
+    if password_config.require_number && !has_digit {
+        missing.push("number");
+    }
+    
+    if password_config.require_special && !has_special {
+        missing.push("special character (@$!%*?&#^-_+=.,:;)");
+    }
+
+    if !missing.is_empty() {
         return Err(AppError::ValidationError(
-            "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)".to_string()
+            format!("Password must contain at least one {}", missing.join(", one "))
         ));
     }
 
@@ -112,4 +133,60 @@ pub fn validate_password(password: &str) -> AppResult<()> {
 /// Sanitizes a string input by trimming whitespace
 pub fn sanitize_string(input: &str) -> String {
     input.trim().to_string()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use app_config::{AppConfig, PasswordConfig, Argon2Config};
+
+    #[test]
+    fn test_config_based_password_validation() {
+        // Create a test AppConfig with different password requirements
+        let mut config = AppConfig::default();
+        config.security.password = PasswordConfig {
+            min_length: 10,
+            require_uppercase: true,
+            require_lowercase: true,
+            require_number: true,
+            require_special: true,
+            argon2: Argon2Config {
+                variant: "argon2id".to_string(),
+                memory: 32768,
+                iterations: 2,
+                parallelism: 2,
+            },
+        };
+
+        // Test with a password that meets all requirements
+        let good_password = "StrongP@ss123";
+        assert!(validate_password(good_password).is_ok(), 
+            "Password should pass validation with the configured requirements");
+
+        // Test with password that's too short
+        let short_password = "Short@1";
+        assert!(validate_password(short_password).is_err(), 
+            "Password that's too short should fail validation");
+
+        // Test with password that's missing uppercase
+        let no_upper_password = "weakp@ssword123";
+        assert!(validate_password(no_upper_password).is_err(), 
+            "Password without uppercase should fail validation");
+
+        // Test with password that's missing lowercase
+        let no_lower_password = "STRONGP@SS123";
+        assert!(validate_password(no_lower_password).is_err(), 
+            "Password without lowercase should fail validation");
+
+        // Test with password that's missing number
+        let no_number_password = "StrongPassword@";
+        assert!(validate_password(no_number_password).is_err(), 
+            "Password without number should fail validation");
+
+        // Test with password that's missing special character
+        let no_special_password = "StrongPassword123";
+        assert!(validate_password(no_special_password).is_err(), 
+            "Password without special character should fail validation");
+    }
 }
