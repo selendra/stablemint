@@ -12,7 +12,7 @@ pub struct Wallet {
     pub address: String,
     // We'll replace the private_key field with a reference to the WalletKey
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_id: Option<String>,  // Reference to the WalletKey record
+    pub key_id: Option<String>, // Reference to the WalletKey record
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]
@@ -32,12 +32,12 @@ impl Wallet {
             id: Self::generate_id(),
             user_email,
             address,
-            key_id: None,  // Will be set after key is created
+            key_id: None, // Will be set after key is created
             created_at: now,
             updated_at: now,
         }
     }
-    
+
     // Set the key ID
     pub fn with_key_id(mut self, key_id: String) -> Self {
         self.key_id = Some(key_id);
@@ -71,14 +71,14 @@ pub struct WalletKey {
     pub id: Thing,
     pub wallet_id: String,
     pub encrypted_private_key: String, // Hex-encoded AES-GCM encrypted private key (encrypted with DEK)
-    pub encrypted_dek: String,         // Hex-encoded AES-GCM encrypted DEK (encrypted with master key)  
-    pub master_key_id: String,         // Identifier for the master key used
-    pub dek_id: String,                // ID for the DEK (used for caching)
-    pub algorithm: String,             // Encryption algorithm used (e.g., "AES-256-GCM")
-    pub pin_salt: String,              // Hex-encoded salt for PIN key derivation
-    pub pin_iv: String,                // Hex-encoded IV for PIN encryption
-    pub dek_iv: String,                // Hex-encoded IV for DEK encryption
-    pub master_iv: String,             // Hex-encoded IV for master key encryption
+    pub encrypted_dek: String, // Hex-encoded AES-GCM encrypted DEK (encrypted with master key)
+    pub master_key_id: String, // Identifier for the master key used
+    pub dek_id: String,        // ID for the DEK (used for caching)
+    pub algorithm: String,     // Encryption algorithm used (e.g., "AES-256-GCM")
+    pub pin_salt: String,      // Hex-encoded salt for PIN key derivation
+    pub pin_iv: String,        // Hex-encoded IV for PIN encryption
+    pub dek_iv: String,        // Hex-encoded IV for DEK encryption
+    pub master_iv: String,     // Hex-encoded IV for master key encryption
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]

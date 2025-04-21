@@ -10,9 +10,7 @@ use tracing::{Level, error, info};
 use tracing_subscriber::{FmtSubscriber, layer::SubscriberExt};
 
 use app_config::AppConfig;
-use app_database::{
-    db_connect::initialize_user_db, service::DbService, USER_DB_ARC
-};
+use app_database::{USER_DB_ARC, db_connect::initialize_user_db, service::DbService};
 use app_error::AppError;
 use app_models::user::User;
 use micro_user::schema::create_schema;

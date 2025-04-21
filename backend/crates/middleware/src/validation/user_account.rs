@@ -89,42 +89,62 @@ pub fn validate_password(password: &str) -> AppResult<()> {
 
     // Check minimum length requirement
     if password.len() < password_config.min_length {
-        return Err(AppError::ValidationError(
-            format!("Password must be at least {} characters long", password_config.min_length)
-        ));
+        return Err(AppError::ValidationError(format!(
+            "Password must be at least {} characters long",
+            password_config.min_length
+        )));
     }
 
     // Check for required character classes
     let has_lowercase = password.chars().any(|c| c.is_ascii_lowercase());
     let has_uppercase = password.chars().any(|c| c.is_ascii_uppercase());
     let has_digit = password.chars().any(|c| c.is_ascii_digit());
-    let has_special = password
-        .chars()
-        .any(|c| matches!(c, '@' | '$' | '!' | '%' | '*' | '?' | '&' | '#' | '^' | '-' | '_' | '+' | '=' | '.' | ',' | ':' | ';'));
+    let has_special = password.chars().any(|c| {
+        matches!(
+            c,
+            '@' | '$'
+                | '!'
+                | '%'
+                | '*'
+                | '?'
+                | '&'
+                | '#'
+                | '^'
+                | '-'
+                | '_'
+                | '+'
+                | '='
+                | '.'
+                | ','
+                | ':'
+                | ';'
+        )
+    });
 
     // Validate according to configuration
     let mut missing = Vec::new();
-    
+
     if password_config.require_lowercase && !has_lowercase {
         missing.push("lowercase letter");
     }
-    
+
     if password_config.require_uppercase && !has_uppercase {
         missing.push("uppercase letter");
     }
-    
+
     if password_config.require_number && !has_digit {
         missing.push("number");
     }
-    
+
     if password_config.require_special && !has_special {
         missing.push("special character (@$!%*?&#^-_+=.,:;)");
     }
 
     if !missing.is_empty() {
-        return Err(AppError::ValidationError(
-            format!("Password must contain at least one {}", missing.join(", one "))
-        ));
+        return Err(AppError::ValidationError(format!(
+            "Password must contain at least one {}",
+            missing.join(", one ")
+        )));
     }
 
     Ok(())
@@ -135,11 +155,10 @@ pub fn sanitize_string(input: &str) -> String {
     input.trim().to_string()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_config::{AppConfig, PasswordConfig, Argon2Config};
+    use app_config::{AppConfig, Argon2Config, PasswordConfig};
 
     #[test]
     fn test_config_based_password_validation() {
@@ -161,32 +180,44 @@ mod tests {
 
         // Test with a password that meets all requirements
         let good_password = "StrongP@ss123";
-        assert!(validate_password(good_password).is_ok(), 
-            "Password should pass validation with the configured requirements");
+        assert!(
+            validate_password(good_password).is_ok(),
+            "Password should pass validation with the configured requirements"
+        );
 
         // Test with password that's too short
         let short_password = "Short@1";
-        assert!(validate_password(short_password).is_err(), 
-            "Password that's too short should fail validation");
+        assert!(
+            validate_password(short_password).is_err(),
+            "Password that's too short should fail validation"
+        );
 
         // Test with password that's missing uppercase
         let no_upper_password = "weakp@ssword123";
-        assert!(validate_password(no_upper_password).is_err(), 
-            "Password without uppercase should fail validation");
+        assert!(
+            validate_password(no_upper_password).is_err(),
+            "Password without uppercase should fail validation"
+        );
 
         // Test with password that's missing lowercase
         let no_lower_password = "STRONGP@SS123";
-        assert!(validate_password(no_lower_password).is_err(), 
-            "Password without lowercase should fail validation");
+        assert!(
+            validate_password(no_lower_password).is_err(),
+            "Password without lowercase should fail validation"
+        );
 
         // Test with password that's missing number
         let no_number_password = "StrongPassword@";
-        assert!(validate_password(no_number_password).is_err(), 
-            "Password without number should fail validation");
+        assert!(
+            validate_password(no_number_password).is_err(),
+            "Password without number should fail validation"
+        );
 
         // Test with password that's missing special character
         let no_special_password = "StrongPassword123";
-        assert!(validate_password(no_special_password).is_err(), 
-            "Password without special character should fail validation");
+        assert!(
+            validate_password(no_special_password).is_err(),
+            "Password without special character should fail validation"
+        );
     }
 }

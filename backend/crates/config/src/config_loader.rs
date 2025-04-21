@@ -143,7 +143,6 @@ pub struct RedisConfig {
 pub struct EncryptSecretsConfig {
     pub master_key_name: String,
     pub master_key: String,
-
 }
 
 impl AppConfig {
@@ -221,22 +220,19 @@ impl AppConfig {
         }
 
         // Validate Redis configuration if present
-        
-            if self.redis.url.trim().is_empty() {
-                errors.push("Redis URL cannot be empty".to_string());
-            } else if is_production && !self.redis.url.starts_with("rediss://") {
-                errors.push(
-                    "Production should use a secure 'rediss://' Redis connection".to_string(),
-                );
-            }
 
-            if self.redis.pool_size == 0 {
-                errors.push("Redis pool size must be greater than 0".to_string());
-            }
-        
+        if self.redis.url.trim().is_empty() {
+            errors.push("Redis URL cannot be empty".to_string());
+        } else if is_production && !self.redis.url.starts_with("rediss://") {
+            errors.push("Production should use a secure 'rediss://' Redis connection".to_string());
+        }
 
-         // Validate HCP Secrets configuration if present
-    
+        if self.redis.pool_size == 0 {
+            errors.push("Redis pool size must be greater than 0".to_string());
+        }
+
+        // Validate HCP Secrets configuration if present
+
         if self.encrypt_secrets.master_key.trim().is_empty() {
             errors.push("encrypt secrets cannot be empty".to_string());
         }

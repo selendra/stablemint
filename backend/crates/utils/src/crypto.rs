@@ -1,13 +1,13 @@
 use app_error::{AppError, AppResult};
-use rand::{rng, RngCore};
-use std::sync::Arc;
+use hex;
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
-use sha2::{Sha256, Sha512, Digest};
-use hex;
-use uuid::Uuid;
+use rand::{RngCore, rng};
+use sha2::{Digest, Sha256, Sha512};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 // Constants for encryption
 const PBKDF2_ITERATIONS: u32 = 10000; // High number for security
@@ -51,38 +51,42 @@ pub struct WalletEncryptionService {
 
 impl WalletEncryptionService {
     /// Creates a new WalletEncryptionService instance with HCP Secrets
-    pub fn new(master_key_id: &str, master_key: &[u8] ) -> Self {
+    pub fn new(master_key_id: &str, master_key: &[u8]) -> Self {
         Self {
             master_key_id: master_key_id.to_string(),
             dek_cache: Arc::new(DekCache::new()),
-            master_key: Arc::from(master_key.to_vec())
+            master_key: Arc::from(master_key.to_vec()),
         }
     }
 
     /// Encrypt a private key with user PIN and then with DEK and master key
-    pub async fn encrypt_private_key(&self, private_key: &str, pin: &str) -> AppResult<WalletEncryptedData> {
+    pub async fn encrypt_private_key(
+        &self,
+        private_key: &str,
+        pin: &str,
+    ) -> AppResult<WalletEncryptedData> {
         // Step 1: PIN encryption - derive a key from the PIN
         let pin_salt = Self::generate_random_bytes(SALT_LENGTH);
         let pin_key = Self::derive_key_from_pin(pin, &pin_salt)?;
-        
+
         // Step 2: Encrypt the private key with the PIN-derived key
         let pin_iv = Self::generate_random_bytes(IV_LENGTH);
         let pin_encrypted = Self::aes_gcm_encrypt(private_key.as_bytes(), &pin_key, &pin_iv)?;
-        
+
         // Step 3: Generate a random DEK (Data Encryption Key)
         let dek = Self::generate_random_bytes(KEY_LENGTH);
-        
+
         // Step 4: Encrypt the PIN-encrypted data with the DEK
         let dek_iv = Self::generate_random_bytes(IV_LENGTH);
         let dek_encrypted = Self::aes_gcm_encrypt(&pin_encrypted, &dek, &dek_iv)?;
-        
+
         let master_iv = Self::generate_random_bytes(IV_LENGTH);
         let encrypted_dek = Self::aes_gcm_encrypt(&dek, &self.master_key, &master_iv)?;
-        
+
         // Cache the DEK for future use
         let dek_id = Uuid::new_v4().to_string();
         self.dek_cache.set(dek_id.clone(), dek).await;
-        
+
         // Return the encrypted data structure
         Ok(WalletEncryptedData {
             user_id: "".to_string(), // Set this when associating with a user
@@ -99,53 +103,60 @@ impl WalletEncryptionService {
     }
 
     /// Decrypt a private key using the reverse process
-    pub async fn decrypt_private_key(&self, encrypted_data: &WalletEncryptedData, pin: &str) -> AppResult<String> {
+    pub async fn decrypt_private_key(
+        &self,
+        encrypted_data: &WalletEncryptedData,
+        pin: &str,
+    ) -> AppResult<String> {
         // Validate the master key identifier
         if encrypted_data.master_key_identifier != self.master_key_id {
             return Err(AppError::ValidationError(
                 "Invalid master key identifier".to_string(),
             ));
         }
-        
+
         // Step 1: Try to get DEK from cache first
         let dek = match self.dek_cache.get(&encrypted_data.dek_id).await {
             Some(dek) => dek,
             None => {
                 // If not in cache, decrypt it using the master key
-    
+
                 let encrypted_dek = hex::decode(&encrypted_data.encrypted_dek)
                     .map_err(|_| AppError::ValidationError("Invalid DEK format".to_string()))?;
-                let master_iv = hex::decode(&encrypted_data.master_iv)
-                    .map_err(|_| AppError::ValidationError("Invalid master IV format".to_string()))?;
-                
+                let master_iv = hex::decode(&encrypted_data.master_iv).map_err(|_| {
+                    AppError::ValidationError("Invalid master IV format".to_string())
+                })?;
+
                 let dek = Self::aes_gcm_decrypt(&encrypted_dek, &self.master_key, &master_iv)?;
-                
+
                 // Add to cache for future use
-                self.dek_cache.set(encrypted_data.dek_id.clone(), dek.clone()).await;
-                
+                self.dek_cache
+                    .set(encrypted_data.dek_id.clone(), dek.clone())
+                    .await;
+
                 dek
             }
         };
-        
+
         // Step 2: Decrypt the encrypted private key with the DEK
         let dek_encrypted = hex::decode(&encrypted_data.encrypted_private_key)
             .map_err(|_| AppError::ValidationError("Invalid encrypted data format".to_string()))?;
         let dek_iv = hex::decode(&encrypted_data.dek_iv)
             .map_err(|_| AppError::ValidationError("Invalid DEK IV format".to_string()))?;
-        
+
         let pin_encrypted = Self::aes_gcm_decrypt(&dek_encrypted, &dek, &dek_iv)?;
-        
+
         // Step 3: Derive the key from the PIN
         let pin_salt = hex::decode(&encrypted_data.pin_salt)
             .map_err(|_| AppError::ValidationError("Invalid PIN salt format".to_string()))?;
         let pin_key = Self::derive_key_from_pin(pin, &pin_salt)?;
-        
+
         // Step 4: Decrypt the PIN-encrypted data
         let pin_iv = hex::decode(&encrypted_data.pin_iv)
             .map_err(|_| AppError::ValidationError("Invalid PIN IV format".to_string()))?;
-        
+
         let private_key_bytes = Self::aes_gcm_decrypt(&pin_encrypted, &pin_key, &pin_iv)?;
-        
+
         // Convert back to string
         String::from_utf8(private_key_bytes)
             .map_err(|_| AppError::ValidationError("Invalid private key data".to_string()))
@@ -161,14 +172,10 @@ impl WalletEncryptionService {
     /// Derive a key from a PIN using PBKDF2
     fn derive_key_from_pin(pin: &str, salt: &[u8]) -> AppResult<Vec<u8>> {
         let mut key = vec![0u8; KEY_LENGTH];
-        
-        pbkdf2::<Hmac<Sha512>>(
-            pin.as_bytes(),
-            salt,
-            PBKDF2_ITERATIONS,
-            &mut key,
-        ).map_err(|_| AppError::CryptoError("Failed to derive key from PIN".to_string()))?;
-        
+
+        pbkdf2::<Hmac<Sha512>>(pin.as_bytes(), salt, PBKDF2_ITERATIONS, &mut key)
+            .map_err(|_| AppError::CryptoError("Failed to derive key from PIN".to_string()))?;
+
         Ok(key)
     }
 
@@ -176,16 +183,16 @@ impl WalletEncryptionService {
     fn aes_gcm_encrypt(data: &[u8], key: &[u8], iv: &[u8]) -> AppResult<Vec<u8>> {
         // Note: This is a simplified implementation for demonstration
         // In a real application, use a proper crypto library like ring or RustCrypto
-        
+
         // For this implementation, we'll just XOR the data with the key (NOT SECURE)
         // and append a mock "tag" (also NOT SECURE)
         let mut result = Vec::with_capacity(data.len() + TAG_LENGTH);
-        
+
         // "Encrypt" the data (this is NOT actual AES-GCM encryption)
         for (i, byte) in data.iter().enumerate() {
             result.push(byte ^ key[i % key.len()]);
         }
-        
+
         // Generate a mock "authentication tag" by hashing the data and key
         let mut hasher = Sha256::new();
         hasher.update(data);
@@ -193,7 +200,7 @@ impl WalletEncryptionService {
         hasher.update(iv);
         let tag = hasher.finalize();
         result.extend_from_slice(&tag[0..TAG_LENGTH]);
-        
+
         Ok(result)
     }
 
@@ -201,31 +208,35 @@ impl WalletEncryptionService {
     fn aes_gcm_decrypt(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> AppResult<Vec<u8>> {
         // Split ciphertext and tag
         if ciphertext.len() < TAG_LENGTH {
-            return Err(AppError::ValidationError("Invalid ciphertext format".to_string()));
+            return Err(AppError::ValidationError(
+                "Invalid ciphertext format".to_string(),
+            ));
         }
-        
+
         let (encrypted_data, tag) = ciphertext.split_at(ciphertext.len() - TAG_LENGTH);
-        
+
         // Verify the "tag" (this is NOT actual AES-GCM verification)
         let mut hasher = Sha256::new();
-        
+
         // "Decrypt" the data (this is NOT actual AES-GCM decryption)
         let mut result = Vec::with_capacity(encrypted_data.len());
-        
+
         for (i, byte) in encrypted_data.iter().enumerate() {
             result.push(byte ^ key[i % key.len()]);
         }
-        
+
         hasher.update(&result);
         hasher.update(key);
         hasher.update(iv);
         let expected_tag = hasher.finalize();
-        
+
         // Verify tag (time-constant comparison would be better in production)
         if tag != &expected_tag[0..TAG_LENGTH] {
-            return Err(AppError::ValidationError("Invalid authentication tag".to_string()));
+            return Err(AppError::ValidationError(
+                "Invalid authentication tag".to_string(),
+            ));
         }
-        
+
         Ok(result)
     }
 }
@@ -235,14 +246,14 @@ impl WalletEncryptionService {
 pub struct WalletEncryptedData {
     pub user_id: String,
     pub encrypted_private_key: String, // Hex-encoded AES-GCM encrypted private key (encrypted with DEK)
-    pub encrypted_dek: String,         // Hex-encoded AES-GCM encrypted DEK (encrypted with master key)
+    pub encrypted_dek: String, // Hex-encoded AES-GCM encrypted DEK (encrypted with master key)
     pub master_key_identifier: String, // Identifier for the master key used
-    pub dek_id: String,                // ID for the DEK (used for caching)
-    pub algorithm: String,             // Encryption algorithm used (e.g., "AES-256-GCM")
-    pub pin_salt: String,              // Hex-encoded salt for PIN key derivation
-    pub pin_iv: String,                // Hex-encoded IV for PIN encryption
-    pub dek_iv: String,                // Hex-encoded IV for DEK encryption
-    pub master_iv: String,             // Hex-encoded IV for master key encryption
+    pub dek_id: String,        // ID for the DEK (used for caching)
+    pub algorithm: String,     // Encryption algorithm used (e.g., "AES-256-GCM")
+    pub pin_salt: String,      // Hex-encoded salt for PIN key derivation
+    pub pin_iv: String,        // Hex-encoded IV for PIN encryption
+    pub dek_iv: String,        // Hex-encoded IV for DEK encryption
+    pub master_iv: String,     // Hex-encoded IV for master key encryption
 }
 
 impl WalletEncryptedData {
@@ -251,12 +262,12 @@ impl WalletEncryptedData {
         self.user_id = user_id.to_string();
         self
     }
-    
+
     /// Convert to a string representation for storage
     pub fn to_storage_string(&self) -> String {
         serde_json::to_string(self).unwrap_or_default()
     }
-    
+
     /// Create from a storage string
     pub fn from_storage_string(data: &str) -> AppResult<Self> {
         serde_json::from_str(data)
@@ -360,7 +371,8 @@ impl<'de> serde::Deserialize<'de> for WalletEncryptedData {
                 let user_id = user_id.ok_or_else(|| de::Error::missing_field("user_id"))?;
                 let encrypted_private_key = encrypted_private_key
                     .ok_or_else(|| de::Error::missing_field("encrypted_private_key"))?;
-                let encrypted_dek = encrypted_dek.ok_or_else(|| de::Error::missing_field("encrypted_dek"))?;
+                let encrypted_dek =
+                    encrypted_dek.ok_or_else(|| de::Error::missing_field("encrypted_dek"))?;
                 let master_key_identifier = master_key_identifier
                     .ok_or_else(|| de::Error::missing_field("master_key_identifier"))?;
                 let dek_id = dek_id.ok_or_else(|| de::Error::missing_field("dek_id"))?;

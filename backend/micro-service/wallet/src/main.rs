@@ -1,11 +1,13 @@
 use anyhow::Context;
 use app_config::AppConfig;
 use app_database::{
-    db_connect::{initialize_user_db, initialize_wallet_db}, service::DbService, USER_DB_ARC, WALLET_DB_ARC
+    USER_DB_ARC, WALLET_DB_ARC,
+    db_connect::{initialize_user_db, initialize_wallet_db},
+    service::DbService,
 };
 use app_error::AppError;
 use app_middleware::{JwtService, limits::rate_limiter::create_redis_api_rate_limiter};
-use app_models::{user::User, wallet::Wallet, WalletKey};
+use app_models::{WalletKey, user::User, wallet::Wallet};
 use app_utils::crypto::WalletEncryptionService;
 use micro_wallet::{routes, schema::create_schema, service::WalletService};
 use std::{collections::HashMap, sync::Arc};
@@ -55,13 +57,13 @@ async fn main() -> Result<(), AppError> {
     );
 
     let user_db_arc = USER_DB_ARC
-    .get_or_init(|| async {
-        initialize_user_db().await.unwrap_or_else(|e| {
-            error!("Database initialization failed: {}", e);
-            panic!("Database initialization failed");
+        .get_or_init(|| async {
+            initialize_user_db().await.unwrap_or_else(|e| {
+                error!("Database initialization failed: {}", e);
+                panic!("Database initialization failed");
+            })
         })
-    })
-    .await;
+        .await;
     let user_db = Arc::new(DbService::<User>::new(&user_db_arc, "users"));
 
     let wallet_db_arc = WALLET_DB_ARC
@@ -109,7 +111,7 @@ async fn main() -> Result<(), AppError> {
         .with_wallet_db(wallet_db)
         .with_wallet_key_db(wallet_key_db)
         .with_user_db(user_db);
-    
+
     let wallet_service = Arc::new(wallet_service);
 
     // Create GraphQL schema

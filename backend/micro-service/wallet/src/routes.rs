@@ -8,10 +8,7 @@ use crate::{
 use std::{sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{
-    compression::CompressionLayer,
-    cors::CorsLayer,
-    timeout::TimeoutLayer,
-    trace::TraceLayer,
+    compression::CompressionLayer, cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer,
 };
 
 use axum::{
@@ -42,36 +39,40 @@ pub fn create_routes(
 ) -> Router {
     // Load configuration
     let config = AppConfig::load().unwrap_or_default();
-    
+
     // Get body limit and CORS settings from config
     let body_limit = config.server.body_limit;
     let cors_config = &config.security.cors;
-    
+
     // Configure CORS with settings from config
     let cors = CorsLayer::new()
         // If allowed_origins contains "*", use Any, otherwise use exact list
-        .allow_origin(
-            if cors_config.allowed_origins.contains(&"*".to_string()) {
-                tower_http::cors::AllowOrigin::any()
-            } else {
-                tower_http::cors::AllowOrigin::list(
-                    cors_config.allowed_origins.iter()
-                        .filter_map(|origin| origin.parse().ok())
-                        .collect::<Vec<_>>()
-                )
-            }
-        )
+        .allow_origin(if cors_config.allowed_origins.contains(&"*".to_string()) {
+            tower_http::cors::AllowOrigin::any()
+        } else {
+            tower_http::cors::AllowOrigin::list(
+                cors_config
+                    .allowed_origins
+                    .iter()
+                    .filter_map(|origin| origin.parse().ok())
+                    .collect::<Vec<_>>(),
+            )
+        })
         // Convert allowed methods from strings to HTTP methods
         .allow_methods(
-            cors_config.allowed_methods.iter()
+            cors_config
+                .allowed_methods
+                .iter()
                 .filter_map(|method| method.parse().ok())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
         )
         // Convert allowed headers from strings to HTTP header names
         .allow_headers(
-            cors_config.allowed_headers.iter()
+            cors_config
+                .allowed_headers
+                .iter()
                 .filter_map(|header| header.parse().ok())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
         );
 
     // Define global middleware stack WITHOUT the body limit
@@ -97,7 +98,7 @@ pub fn create_routes(
     // Apply middleware in order
     let app = app
         .layer(axum::middleware::from_fn(error_handling_middleware))
-        .layer(RequestBodyLimitLayer::new(body_limit));  // Use body limit from config
+        .layer(RequestBodyLimitLayer::new(body_limit)); // Use body limit from config
 
     // Apply custom middleware stacks
     let app = app
