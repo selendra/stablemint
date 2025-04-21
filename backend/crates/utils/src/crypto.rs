@@ -42,7 +42,7 @@ impl DekCache {
 /// Wallet encryption service for handling the secure storage of wallet private keys
 pub struct WalletEncryptionService {
     // Fields for master key identification
-    master_key_id: String,
+    pub master_key_id: String,
     // In-memory cache of data encryption keys
     dek_cache: Arc<DekCache>,
     //

@@ -5,7 +5,7 @@ use app_database::{
 };
 use app_error::AppError;
 use app_middleware::{JwtService, limits::rate_limiter::create_redis_api_rate_limiter};
-use app_models::{user::User, wallet::Wallet};
+use app_models::{user::User, wallet::Wallet, WalletKey};
 use app_utils::crypto::WalletEncryptionService;
 use micro_wallet::{routes, schema::create_schema, service::WalletService};
 use std::{collections::HashMap, sync::Arc};
@@ -54,6 +54,16 @@ async fn main() -> Result<(), AppError> {
         chrono::Utc::now()
     );
 
+    let user_db_arc = USER_DB_ARC
+    .get_or_init(|| async {
+        initialize_user_db().await.unwrap_or_else(|e| {
+            error!("Database initialization failed: {}", e);
+            panic!("Database initialization failed");
+        })
+    })
+    .await;
+    let user_db = Arc::new(DbService::<User>::new(&user_db_arc, "users"));
+
     let wallet_db_arc = WALLET_DB_ARC
         .get_or_init(|| async {
             initialize_wallet_db().await.unwrap_or_else(|e| {
@@ -63,16 +73,7 @@ async fn main() -> Result<(), AppError> {
         })
         .await;
     let wallet_db = Arc::new(DbService::<Wallet>::new(&wallet_db_arc, "wallets"));
-
-    let user_db_arc = USER_DB_ARC
-        .get_or_init(|| async {
-            initialize_user_db().await.unwrap_or_else(|e| {
-                error!("Database initialization failed: {}", e);
-                panic!("Database initialization failed");
-            })
-        })
-        .await;
-    let user_db = Arc::new(DbService::<User>::new(&user_db_arc, "users"));
+    let wallet_key_db = Arc::new(DbService::<WalletKey>::new(&wallet_db_arc, "wallet_keys"));
 
     // Configure path-specific rate limits from our config file
     let mut path_limits = HashMap::new();
@@ -106,6 +107,7 @@ async fn main() -> Result<(), AppError> {
     // Create wallet service
     let wallet_service = WalletService::new(encryption_service)
         .with_wallet_db(wallet_db)
+        .with_wallet_key_db(wallet_key_db)
         .with_user_db(user_db);
     
     let wallet_service = Arc::new(wallet_service);
